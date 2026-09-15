@@ -1,13 +1,16 @@
+import systemRoutes from "./src/routes/systemRoutes.js";
+
 import express from "express";
 import dotenv from "dotenv";
 
-dotenv.config();
+dotenv.config()
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-
+app.use("/api/system", systemRoutes);
 app.get("/", (req, res) => {
   res.json({
     name: "ZEESHAN NEWS AI",
