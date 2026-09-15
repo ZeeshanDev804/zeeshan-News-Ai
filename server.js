@@ -1,16 +1,20 @@
-import systemRoutes from "./src/routes/systemRoutes.js";
 
 import express from "express";
 import dotenv from "dotenv";
 
-dotenv.config()
+import systemRoutes from "./src/routes/systemRoutes.js";
+import databaseRoutes from "./src/routes/databaseRoutes.js";
 
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+
 app.use("/api/system", systemRoutes);
+app.use("/api/database", databaseRoutes);
+
 app.get("/", (req, res) => {
   res.json({
     name: "ZEESHAN NEWS AI",
@@ -28,5 +32,7 @@ app.get("/health", (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`ZEESHAN NEWS AI running on port ${PORT}`);
+  console.log(
+    `ZEESHAN NEWS AI running on port ${PORT}`
+  );
 });
