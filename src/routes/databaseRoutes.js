@@ -1,12 +1,15 @@
+
 import express from "express";
 import { checkDatabase } from "../services/databaseService.js";
 
 const router = express.Router();
 
-router.get("/status", (req, res) => {
+router.get("/status", async (req, res) => {
+  const database = await checkDatabase();
+
   res.json({
-    success: true,
-    database: checkDatabase()
+    success: database.status !== "ERROR",
+    database
   });
 });
 
