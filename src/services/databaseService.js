@@ -1,6 +1,8 @@
-import { DATABASE_CONFIG } from "../config/database.js";
 
-export function getDatabaseConnection() {
+import { DATABASE_CONFIG } from "../config/database.js";
+import { checkPostgres } from "../config/postgres.js";
+
+export async function checkDatabase() {
   if (!DATABASE_CONFIG.configured) {
     return {
       status: "NOT_CONFIGURED",
@@ -8,13 +10,19 @@ export function getDatabaseConnection() {
     };
   }
 
-  return {
-    status: "READY",
-    provider: DATABASE_CONFIG.provider,
-    urlConfigured: true
-  };
-}
+  try {
+    const result = await checkPostgres();
 
-export function checkDatabase() {
-  return getDatabaseConnection();
+    return {
+      status: "CONNECTED",
+      provider: DATABASE_CONFIG.provider,
+      serverTime: result.now
+    };
+  } catch (error) {
+    return {
+      status: "ERROR",
+      provider: DATABASE_CONFIG.provider,
+      message: error.message
+    };
+  }
 }
