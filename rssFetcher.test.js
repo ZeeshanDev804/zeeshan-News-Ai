@@ -14,10 +14,11 @@ steps:
   - name: Checkout repository
     uses: actions/checkout@v4
 
-  - name: Setup Node.js 22
-    uses: actions/setup-node@v4
-    with:
-      node-version: 22
+  - name: Check Node.js
+    run: node --version
+
+  - name: Check npm
+    run: npm --version
 
   - name: Install dependencies
     run: npm install --no-audit --no-fund
