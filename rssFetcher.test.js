@@ -14,10 +14,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+      - name: Show Node version
+        run: node --version
+
+      - name: Show npm version
+        run: npm --version
 
       - name: Install dependencies
         run: npm install
