@@ -1,33 +1,22 @@
-import { fetchAndSaveNews } from "../src/lib/rssFetcher.js";
+name: RSS News Test
 
-async function runTest() {
-  console.log("🧪 RSS TEST STARTED");
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
-  const fakeDb = {
-    query: async () => {
-      return {
-        rowCount: 1,
-      };
-    },
-  };
+jobs:
+  rss-test:
+    runs-on: ubuntu-latest
 
-  try {
-    const result = await fetchAndSaveNews(fakeDb);
+    steps:
+      - uses: actions/checkout@v4
 
-    if (!result || result.success !== true) {
-      throw new Error("RSS fetch/save failed");
-    }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
-    console.log(`📊 News items saved: ${result.saved}`);
+      - run: npm install
 
-    console.log("✅ RSS TEST PASSED");
-    console.log("📰 RSS fetching and database-save logic completed");
-  } catch (error) {
-    console.error("❌ RSS TEST FAILED");
-    console.error(error.message);
-
-    process.exitCode = 1;
-  }
-}
-
-runTest();
+      - run: node tests/rssFetcher.test.js
