@@ -1,39 +1,27 @@
-import { fetchNews } from "../src/lib/rssFetcher.js";
+import { fetchAndSaveNews } from "../src/lib/rssFetcher.js";
 
 async function runTest() {
   console.log("🧪 RSS TEST STARTED");
 
+  const fakeDb = {
+    query: async () => {
+      return {
+        rowCount: 1,
+      };
+    },
+  };
+
   try {
-    const news = await fetchNews();
+    const result = await fetchAndSaveNews(fakeDb);
 
-    console.log(`📊 News items received: ${news.length}`);
-
-    if (!Array.isArray(news)) {
-      throw new Error("RSS result is not an array");
+    if (!result || result.success !== true) {
+      throw new Error("RSS fetch/save failed");
     }
 
-    if (news.length === 0) {
-      throw new Error("No news was fetched");
-    }
-
-    const first = news[0];
-
-    if (!first.title) {
-      throw new Error("News title is missing");
-    }
-
-    if (!first.link) {
-      throw new Error("News link is missing");
-    }
-
-    if (!first.source) {
-      throw new Error("News source is missing");
-    }
+    console.log(`📊 News items saved: ${result.saved}`);
 
     console.log("✅ RSS TEST PASSED");
-    console.log(`📰 First headline: ${first.title}`);
-    console.log(`🔗 Link: ${first.link}`);
-    console.log(`📡 Source: ${first.source}`);
+    console.log("📰 RSS fetching and database-save logic completed");
   } catch (error) {
     console.error("❌ RSS TEST FAILED");
     console.error(error.message);
