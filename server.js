@@ -2,6 +2,7 @@ import express from "express";
 import dotenv from "dotenv";
 import pg from "pg";
 import { runRssEngine } from "./src/lib/rssEngine.js";
+import newsRoutes from "./src/routes/newsRoutes.js";
 
 dotenv.config();
 
@@ -31,6 +32,9 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
 });
+
+// Make database available to routes
+app.locals.db = pool;
 
 pool.on("error", (error) => {
   console.error(
@@ -65,6 +69,7 @@ app.get("/health", async (req, res) => {
       server: "online",
       database: "connected",
       rssEngine: "ready",
+      newsApi: "ready",
     });
   } catch (error) {
     console.error(
@@ -77,6 +82,7 @@ app.get("/health", async (req, res) => {
       server: "online",
       database: "error",
       rssEngine: "unknown",
+      newsApi: "unknown",
       error: error.message,
     });
   }
@@ -112,68 +118,10 @@ app.get("/api/database", async (req, res) => {
 });
 
 // =============================
-// NEWS COUNT
+// NEWS API ROUTES
 // =============================
 
-app.get("/api/news/count", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT COUNT(*) AS total FROM articles"
-    );
-
-    res.json({
-      success: true,
-      total: Number(result.rows[0].total),
-    });
-  } catch (error) {
-    console.error(
-      "❌ News count failed:",
-      error.message
-    );
-
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
-// =============================
-// LATEST NEWS
-// =============================
-
-app.get("/api/news", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT
-        id,
-        title,
-        link,
-        content,
-        source,
-        published_at
-      FROM articles
-      ORDER BY published_at DESC
-      LIMIT 50
-    `);
-
-    res.json({
-      success: true,
-      total: result.rows.length,
-      articles: result.rows,
-    });
-  } catch (error) {
-    console.error(
-      "❌ News API failed:",
-      error.message
-    );
-
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
+app.use("/api/news", newsRoutes);
 
 // =============================
 // RSS ENGINE
@@ -226,18 +174,27 @@ app.listen(PORT, () => {
   console.log(
     "================================="
   );
+
   console.log(
     "🚀 ZEESHAN NEWS AI"
   );
+
   console.log(
     `🌐 Server running on port ${PORT}`
   );
+
   console.log(
     "🗄️ PostgreSQL: Connected"
   );
+
   console.log(
     "📰 RSS Engine: Ready"
   );
+
+  console.log(
+    "📰 News API: Connected"
+  );
+
   console.log(
     "================================="
   );
