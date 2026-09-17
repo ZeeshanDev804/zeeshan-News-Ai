@@ -104,10 +104,35 @@ function createSeoTitle(title = "") {
   return `${cleanTitle.slice(0, 57)}...`;
 }
 
+function normalizeCategory(category, fallback) {
+  const allowed = [
+    "world",
+    "politics",
+    "technology",
+    "business",
+    "sports",
+    "entertainment",
+  ];
+
+  const value = cleanText(category).toLowerCase();
+
+  return allowed.includes(value)
+    ? value
+    : fallback;
+}
+
 export async function analyzeNewsArticle(article) {
   const title = cleanText(article?.title || "");
-  const content = cleanText(article?.content || "");
-  const source = cleanText(article?.source || "");
+
+  const content = cleanText(
+    article?.content ||
+      article?.description ||
+      ""
+  );
+
+  const source = cleanText(
+    article?.source || ""
+  );
 
   if (!title) {
     return {
@@ -138,6 +163,7 @@ Return ONLY valid JSON with these fields:
   "summary": "",
   "category": "",
   "seo_title": "",
+  "sentiment": "",
   "key_points": []
 }
 
@@ -147,8 +173,11 @@ Rules:
 - Use only information available in the supplied article.
 - Category must be one of:
   world, politics, technology, business, sports, entertainment.
+- Sentiment must be one of:
+  neutral, positive, negative.
 - Keep summary concise.
 - key_points must contain short factual points.
+- Do not add information that is not in the source article.
 
 SOURCE:
 ${source}
@@ -173,27 +202,70 @@ ${content}
         summary: aiText,
         category,
         seo_title: seoTitle,
+        sentiment: "neutral",
         key_points: [],
       };
     }
 
+    const finalCategory = normalizeCategory(
+      aiResult.category,
+      category
+    );
+
+    const finalSentiment = [
+      "neutral",
+      "positive",
+      "negative",
+    ].includes(
+      String(
+        aiResult.sentiment || ""
+      ).toLowerCase()
+    )
+      ? String(
+          aiResult.sentiment
+        ).toLowerCase()
+      : "neutral";
+
     return {
       success: true,
-      articleId: article?.id || null,
+
+      articleId:
+        article?.id || null,
+
       source,
+
       originalTitle: title,
+
       headline:
-        aiResult.headline || title,
+        cleanText(
+          aiResult.headline || title
+        ) || title,
+
       summary:
-        aiResult.summary || localSummary,
-      category:
-        aiResult.category || category,
+        cleanText(
+          aiResult.summary || localSummary
+        ) || localSummary,
+
+      category: finalCategory,
+
       seoTitle:
-        aiResult.seo_title || seoTitle,
+        cleanText(
+          aiResult.seo_title || seoTitle
+        ) || seoTitle,
+
+      sentiment: finalSentiment,
+
       keyPoints:
-        Array.isArray(aiResult.key_points)
+        Array.isArray(
+          aiResult.key_points
+        )
           ? aiResult.key_points
+              .map((item) =>
+                cleanText(item)
+              )
+              .filter(Boolean)
           : [],
+
       status: "ai_analyzed",
     };
   } catch (error) {
@@ -204,15 +276,28 @@ ${content}
 
     return {
       success: true,
-      articleId: article?.id || null,
+
+      articleId:
+        article?.id || null,
+
       source,
+
       originalTitle: title,
+
       headline: title,
+
       summary: localSummary,
+
       category,
+
       seoTitle,
+
+      sentiment: "neutral",
+
       keyPoints: [],
+
       status: "local_fallback",
+
       aiError: error.message,
     };
   }
