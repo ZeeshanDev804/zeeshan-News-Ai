@@ -1,16 +1,21 @@
 const AI_API_KEY = process.env.AI_API_KEY;
 
-const AI_MODEL =
-  process.env.AI_MODEL || "gpt-5.6-luna";
+const AI_MODEL = process.env.AI_MODEL;
 
 export function isAIConfigured() {
-  return Boolean(AI_API_KEY);
+  return Boolean(AI_API_KEY && AI_MODEL);
 }
 
 export async function generateAIText(prompt) {
   if (!AI_API_KEY) {
     throw new Error(
       "AI_API_KEY is not configured"
+    );
+  }
+
+  if (!AI_MODEL) {
+    throw new Error(
+      "AI_MODEL is not configured"
     );
   }
 
