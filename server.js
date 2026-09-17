@@ -18,6 +18,12 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 // =============================
+// STATIC WEBSITE
+// =============================
+
+app.use(express.static("public"));
+
+// =============================
 // DATABASE
 // =============================
 
@@ -90,12 +96,12 @@ async function prepareDatabase() {
 // =============================
 
 app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    name: "ZEESHAN NEWS AI",
-    status: "online",
-    version: "1.0.0",
-  });
+  res.sendFile(
+    "index.html",
+    {
+      root: "public",
+    }
+  );
 });
 
 // =============================
@@ -123,6 +129,8 @@ app.get("/health", async (req, res) => {
       success: false,
       server: "online",
       database: "error",
+      rssEngine: "unknown",
+      newsApi: "unknown",
       error: error.message,
     });
   }
@@ -173,7 +181,8 @@ app.get("/api/rss/run", async (req, res) => {
       "🚀 RSS Engine request received"
     );
 
-    const report = await runRssEngine(pool);
+    const report =
+      await runRssEngine(pool);
 
     res.json({
       success: true,
@@ -241,6 +250,10 @@ async function startServer() {
 
       console.log(
         "🤖 AI Database: Ready"
+      );
+
+      console.log(
+        "🌐 Website: Ready"
       );
 
       console.log(
