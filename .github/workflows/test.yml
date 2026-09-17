@@ -1,20 +1,27 @@
-name: ZEESHAN NEWS AI Test
+name: RSS News Test
 
 on:
-  push:
-  pull_request:
+push:
+branches:
+- main
+workflow_dispatch:
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+rss-test:
+runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+  - name: Check Node.js
+    run: node --version
 
-      - run: npm install
-      - run: node --check server.js
-      - run: node tests/systemTest.js
+  - name: Check npm
+    run: npm --version
+
+  - name: Install dependencies
+    run: npm install --no-audit --no-fund
+
+  - name: Run RSS test
+    run: node tests/rssFetcher.test.js
