@@ -1,5 +1,8 @@
 const AI_API_KEY = process.env.AI_API_KEY;
 
+const AI_MODEL =
+  process.env.AI_MODEL || "gpt-5.6-luna";
+
 export function isAIConfigured() {
   return Boolean(AI_API_KEY);
 }
@@ -11,28 +14,29 @@ export async function generateAIText(prompt) {
     );
   }
 
+  if (!prompt || !String(prompt).trim()) {
+    throw new Error(
+      "AI prompt is required"
+    );
+  }
+
   const response = await fetch(
-    "https://api.openai.com/v1/chat/completions",
+    "https://api.openai.com/v1/responses",
     {
       method: "POST",
+
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${AI_API_KEY}`,
       },
+
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are the AI engine for ZEESHAN NEWS AI. Return accurate, concise, neutral news-processing output.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.2,
+        model: AI_MODEL,
+
+        instructions:
+          "You are the AI engine for ZEESHAN NEWS AI. Process news accurately, neutrally, and concisely. Never invent facts.",
+
+        input: String(prompt),
       }),
     }
   );
@@ -47,8 +51,7 @@ export async function generateAIText(prompt) {
 
   const data = await response.json();
 
-  const content =
-    data?.choices?.[0]?.message?.content;
+  const content = data?.output_text;
 
   if (!content) {
     throw new Error(
