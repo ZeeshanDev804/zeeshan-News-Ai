@@ -13,6 +13,12 @@ import {
   getAutomationStatus,
 } from "./src/lib/newsAutomation.js";
 
+import {
+  startScheduler,
+  stopScheduler,
+  getSchedulerStatus,
+} from "./src/lib/scheduler.js";
+
 
 dotenv.config();
 
@@ -189,6 +195,9 @@ app.get(
         automation:
           "ready",
 
+        scheduler:
+          getSchedulerStatus(),
+
       });
 
     } catch (error) {
@@ -216,6 +225,9 @@ app.get(
           "unknown",
 
         automation:
+          "unknown",
+
+        scheduler:
           "unknown",
 
         error:
@@ -440,6 +452,94 @@ app.get(
 
 
 // =============================
+// SCHEDULER STATUS
+// =============================
+
+app.get(
+  "/api/scheduler/status",
+  (req, res) => {
+
+    try {
+
+      const status =
+        getSchedulerStatus();
+
+
+      res.json({
+
+        success: true,
+
+        ...status,
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Scheduler status failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message,
+
+      });
+
+    }
+  }
+);
+
+
+// =============================
+// SCHEDULER STOP
+// =============================
+
+app.get(
+  "/api/scheduler/stop",
+  (req, res) => {
+
+    try {
+
+      const result =
+        stopScheduler();
+
+
+      res.json({
+
+        success: true,
+
+        ...result,
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Scheduler stop failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message,
+
+      });
+
+    }
+  }
+);
+
+
+// =============================
 // 404 HANDLER
 // =============================
 
@@ -458,6 +558,59 @@ app.use(
 
     });
 
+  }
+);
+
+
+// =============================
+// GRACEFUL SHUTDOWN
+// =============================
+
+async function shutdown(
+  signal
+) {
+
+  console.log(
+    `🛑 ${signal} received`
+  );
+
+
+  try {
+
+    stopScheduler();
+
+    await pool.end();
+
+    console.log(
+      "✅ Server shutdown complete"
+    );
+
+    process.exit(0);
+
+  } catch (error) {
+
+    console.error(
+      "❌ Shutdown failed:",
+      error.message
+    );
+
+    process.exit(1);
+  }
+}
+
+
+process.on(
+  "SIGTERM",
+  () => {
+    shutdown("SIGTERM");
+  }
+);
+
+
+process.on(
+  "SIGINT",
+  () => {
+    shutdown("SIGINT");
   }
 );
 
@@ -510,12 +663,40 @@ async function startServer() {
         );
 
         console.log(
+          "⏰ Scheduler: Starting"
+        );
+
+        console.log(
           "🌐 Website: Ready"
         );
 
         console.log(
           "================================="
         );
+
+
+        // =================================
+        // START AUTOMATIC NEWS SCHEDULER
+        // =================================
+
+        try {
+
+          startScheduler(
+            pool
+          );
+
+          console.log(
+            "✅ Automatic scheduler started"
+          );
+
+        } catch (error) {
+
+          console.error(
+            "❌ Scheduler startup failed:",
+            error.message
+          );
+
+        }
 
       }
     );
