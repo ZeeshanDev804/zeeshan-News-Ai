@@ -16,6 +16,8 @@ import legalRoutes from "./src/routes/legalRoutes.js";
 
 import adminRoutes from "./src/routes/adminRoutes.js";
 
+import notificationRoutes from "./src/routes/notificationRoutes.js";
+
 import {
   runNewsAutomation,
   getAutomationStatus,
@@ -31,30 +33,14 @@ import {
   getSchedulerStatus,
 } from "./src/lib/scheduler.js";
 
-
-// ========================================
-// ENVIRONMENT
-// ========================================
-
 dotenv.config();
 
-
-// ========================================
-// APP
-// ========================================
-
-const app =
-  express();
+const app = express();
 
 const PORT =
   Number(
     process.env.PORT || 3000
   );
-
-
-// ========================================
-// MIDDLEWARE
-// ========================================
 
 app.use(
   express.json({
@@ -62,21 +48,11 @@ app.use(
   })
 );
 
-
-// ========================================
-// STATIC WEBSITE
-// ========================================
-
 app.use(
   express.static(
     "public"
   )
 );
-
-
-// ========================================
-// DATABASE CONFIGURATION
-// ========================================
 
 const DATABASE_URL =
   process.env.DATABASE_URL;
@@ -89,11 +65,9 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-
 const {
   Pool,
 } = pg;
-
 
 const pool =
   new Pool({
@@ -114,14 +88,8 @@ const pool =
       10000,
   });
 
-
 app.locals.db =
   pool;
-
-
-// ========================================
-// DATABASE ERROR MONITORING
-// ========================================
 
 pool.on(
   "error",
@@ -132,11 +100,6 @@ pool.on(
     );
   }
 );
-
-
-// ========================================
-// DATABASE PREPARATION
-// ========================================
 
 async function prepareDatabase() {
   console.log(
@@ -187,11 +150,6 @@ async function prepareDatabase() {
   );
 }
 
-
-// ========================================
-// HOME
-// ========================================
-
 app.get(
   "/",
   (req, res) => {
@@ -203,11 +161,6 @@ app.get(
     );
   }
 );
-
-
-// ========================================
-// HEALTH CHECK
-// ========================================
 
 app.get(
   "/health",
@@ -251,11 +204,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// DATABASE STATUS
-// ========================================
-
 app.get(
   "/api/database",
   async (req, res) => {
@@ -295,40 +243,25 @@ app.get(
   }
 );
 
-
-// ========================================
-// NEWS API
-// ========================================
-
 app.use(
   "/api/news",
   newsRoutes
 );
-
-
-// ========================================
-// LEGAL / COPYRIGHT API
-// ========================================
 
 app.use(
   "/api/legal",
   legalRoutes
 );
 
-
-// ========================================
-// ADMIN / CEO API
-// ========================================
-
 app.use(
   "/api/admin",
   adminRoutes
 );
 
-
-// ========================================
-// MANUAL RSS ENGINE
-// ========================================
+app.use(
+  "/api/notifications",
+  notificationRoutes
+);
 
 app.get(
   "/api/rss/run",
@@ -359,11 +292,6 @@ app.get(
     }
   }
 );
-
-
-// ========================================
-// MANUAL AUTOMATION
-// ========================================
 
 app.get(
   "/api/automation/run",
@@ -397,11 +325,6 @@ app.get(
     }
   }
 );
-
-
-// ========================================
-// SECURE CRON AUTOMATION
-// ========================================
 
 app.get(
   "/api/automation/cron",
@@ -456,11 +379,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// AUTOMATION STATUS
-// ========================================
-
 app.get(
   "/api/automation/status",
   (req, res) => {
@@ -487,11 +405,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// SCHEDULER STATUS
-// ========================================
-
 app.get(
   "/api/scheduler/status",
   (req, res) => {
@@ -517,11 +430,6 @@ app.get(
     }
   }
 );
-
-
-// ========================================
-// STOP SCHEDULER
-// ========================================
 
 app.get(
   "/api/scheduler/stop",
@@ -551,11 +459,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// 404
-// ========================================
-
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -566,11 +469,6 @@ app.use(
     });
   }
 );
-
-
-// ========================================
-// GRACEFUL SHUTDOWN
-// ========================================
 
 async function shutdown(
   signal
@@ -599,7 +497,6 @@ async function shutdown(
   }
 }
 
-
 process.on(
   "SIGTERM",
   () => {
@@ -609,7 +506,6 @@ process.on(
   }
 );
 
-
 process.on(
   "SIGINT",
   () => {
@@ -618,11 +514,6 @@ process.on(
     );
   }
 );
-
-
-// ========================================
-// START SERVER
-// ========================================
 
 async function startServer() {
   try {
@@ -664,6 +555,10 @@ async function startServer() {
         );
 
         console.log(
+          "🔔 Web Push Notifications: Enabled"
+        );
+
+        console.log(
           "🔐 Cron Security: Enabled"
         );
 
@@ -691,6 +586,5 @@ async function startServer() {
     process.exit(1);
   }
 }
-
 
 startServer();
