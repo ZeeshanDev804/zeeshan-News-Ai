@@ -4,6 +4,10 @@ import {
   getNewsCount,
   searchNews,
 } from "../lib/newsService.js";
+import {
+  analyzeNewsArticle,
+  analyzeNewsBatch,
+} from "../lib/aiNewsEngine.js";
 
 const router = express.Router();
 
@@ -96,6 +100,110 @@ router.get("/search", async (req, res) => {
   } catch (error) {
     console.error(
       "❌ News search route failed:",
+      error.message
+    );
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// =============================
+// AI ANALYZE ONE ARTICLE
+// =============================
+
+router.get("/analyze/:id", async (req, res) => {
+  try {
+    const articleId = Number(req.params.id);
+
+    if (!Number.isInteger(articleId)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid article ID",
+      });
+    }
+
+    const result = await req.app.locals.db.query(
+      `
+      SELECT
+        id,
+        title,
+        content,
+        source,
+        link,
+        published_at
+      FROM articles
+      WHERE id = $1
+      `,
+      [articleId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Article not found",
+      });
+    }
+
+    const analysis = analyzeNewsArticle(
+      result.rows[0]
+    );
+
+    res.json(analysis);
+  } catch (error) {
+    console.error(
+      "❌ AI article analysis failed:",
+      error.message
+    );
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+});
+
+// =============================
+// AI ANALYZE LATEST NEWS
+// =============================
+
+router.get("/analyze", async (req, res) => {
+  try {
+    const limit = Math.min(
+      Math.max(Number(req.query.limit) || 10, 1),
+      20
+    );
+
+    const result = await req.app.locals.db.query(
+      `
+      SELECT
+        id,
+        title,
+        content,
+        source,
+        link,
+        published_at
+      FROM articles
+      ORDER BY published_at DESC
+      LIMIT $1
+      `,
+      [limit]
+    );
+
+    const analyzed = analyzeNewsBatch(
+      result.rows
+    );
+
+    res.json({
+      success: true,
+      total: analyzed.length,
+      articles: analyzed,
+    });
+  } catch (error) {
+    console.error(
+      "❌ AI news analysis failed:",
       error.message
     );
 
