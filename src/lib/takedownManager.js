@@ -113,6 +113,62 @@ export function createTakedownComplaint(
 
 
 // ========================================
+// SAVE COMPLAINT TO DATABASE
+// ========================================
+
+async function saveComplaint(
+  db,
+  complaint
+) {
+  const result =
+    await db.query(
+      `
+      INSERT INTO takedown_complaints
+        (
+          article_id,
+          complainant,
+          contact,
+          reason,
+          evidence,
+          status,
+          received_at
+        )
+      VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7
+        )
+      RETURNING
+        id,
+        article_id,
+        complainant,
+        contact,
+        reason,
+        evidence,
+        status,
+        received_at
+      `,
+      [
+        complaint.articleId,
+        complaint.complainant,
+        complaint.contact,
+        complaint.reason,
+        complaint.evidence,
+        complaint.status,
+        complaint.receivedAt,
+      ]
+    );
+
+  return result.rows[0];
+}
+
+
+// ========================================
 // RECEIVE TAKEDOWN COMPLAINT
 // ========================================
 
@@ -133,6 +189,17 @@ export async function receiveTakedownComplaint(
 
 
   // --------------------------------------
+  // Save complaint permanently
+  // --------------------------------------
+
+  const savedComplaint =
+    await saveComplaint(
+      db,
+      complaint
+    );
+
+
+  // --------------------------------------
   // Put article on legal hold
   // --------------------------------------
 
@@ -145,7 +212,7 @@ export async function receiveTakedownComplaint(
 
 
   // --------------------------------------
-  // Update takedown status
+  // Update article takedown status
   // --------------------------------------
 
   const statusResult =
@@ -158,13 +225,16 @@ export async function receiveTakedownComplaint(
 
 
   // --------------------------------------
-  // Save audit record
+  // Save complaint audit
   // --------------------------------------
 
   await recordTakedownComplaint(
     db,
     complaint.articleId,
     {
+      complaintId:
+        savedComplaint.id,
+
       complainant:
         complaint.complainant,
 
@@ -202,7 +272,8 @@ export async function receiveTakedownComplaint(
   return {
     success: true,
 
-    complaint,
+    complaint:
+      savedComplaint,
 
     legalHold:
       holdResult.legalHold,
@@ -220,7 +291,7 @@ export async function receiveTakedownComplaint(
 
 
 // ========================================
-// CHANGE COMPLAINT STATUS
+// CHANGE TAKEDOWN STATUS
 // ========================================
 
 export async function changeTakedownStatus(
@@ -260,6 +331,10 @@ export async function changeTakedownStatus(
     );
 
 
+  // --------------------------------------
+  // Update article status
+  // --------------------------------------
+
   const result =
     await updateTakedownStatus(
       db,
@@ -267,6 +342,60 @@ export async function changeTakedownStatus(
       normalizedStatus,
       normalizedNote
     );
+
+
+  // --------------------------------------
+  // Update latest complaint record
+  // --------------------------------------
+
+  await db.query(
+    `
+    UPDATE takedown_complaints
+    SET
+      status = $1,
+      review_notes =
+        CASE
+          WHEN $2 <> ''
+          THEN $2
+          ELSE review_notes
+        END,
+
+      reviewed_at =
+        CASE
+          WHEN $1 IN (
+            'under_review',
+            'action_taken',
+            'rejected',
+            'resolved'
+          )
+          THEN CURRENT_TIMESTAMP
+          ELSE reviewed_at
+        END,
+
+      resolved_at =
+        CASE
+          WHEN $1 IN (
+            'resolved',
+            'rejected'
+          )
+          THEN CURRENT_TIMESTAMP
+          ELSE resolved_at
+        END
+
+    WHERE id = (
+      SELECT id
+      FROM takedown_complaints
+      WHERE article_id = $3
+      ORDER BY created_at DESC
+      LIMIT 1
+    )
+    `,
+    [
+      normalizedStatus,
+      normalizedNote,
+      safeArticleId,
+    ]
+  );
 
 
   return {
@@ -347,7 +476,147 @@ export async function getTakedownStatus(
 
 
 // ========================================
-// SHOULD ARTICLE REMAIN BLOCKED
+// GET ARTICLE COMPLAINTS
+// ========================================
+
+export async function getArticleComplaints(
+  db,
+  articleId,
+  limit = 100
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  const safeArticleId =
+    Number(articleId);
+
+  if (
+    !Number.isFinite(
+      safeArticleId
+    )
+  ) {
+    throw new Error(
+      "Valid article ID is required"
+    );
+  }
+
+  const safeLimit =
+    Math.min(
+      Math.max(
+        Number(limit) || 100,
+        1
+      ),
+      500
+    );
+
+
+  const result =
+    await db.query(
+      `
+      SELECT
+        id,
+        article_id,
+        complainant,
+        contact,
+        reason,
+        evidence,
+        status,
+        received_at,
+        reviewed_at,
+        resolved_at,
+        review_notes,
+        created_at
+      FROM takedown_complaints
+      WHERE article_id = $1
+      ORDER BY
+        created_at DESC
+      LIMIT $2
+      `,
+      [
+        safeArticleId,
+        safeLimit,
+      ]
+    );
+
+
+  return result.rows;
+}
+
+
+// ========================================
+// GET RECENT COMPLAINTS
+// ========================================
+
+export async function getRecentComplaints(
+  db,
+  limit = 100
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  const safeLimit =
+    Math.min(
+      Math.max(
+        Number(limit) || 100,
+        1
+      ),
+      500
+    );
+
+
+  const result =
+    await db.query(
+      `
+      SELECT
+        tc.id,
+        tc.article_id,
+        tc.complainant,
+        tc.contact,
+        tc.reason,
+        tc.evidence,
+        tc.status,
+        tc.received_at,
+        tc.reviewed_at,
+        tc.resolved_at,
+        tc.review_notes,
+        tc.created_at,
+
+        a.title,
+        a.source,
+        a.link,
+        a.copyright_status,
+        a.copyright_risk,
+        a.legal_hold,
+        a.legal_review_required
+
+      FROM takedown_complaints tc
+
+      JOIN articles a
+        ON a.id = tc.article_id
+
+      ORDER BY
+        tc.created_at DESC
+
+      LIMIT $1
+      `,
+      [
+        safeLimit,
+      ]
+    );
+
+
+  return result.rows;
+}
+
+
+// ========================================
+// CHECK IF ARTICLE SHOULD REMAIN BLOCKED
 // ========================================
 
 export function shouldRemainBlocked(
@@ -372,6 +641,7 @@ export function shouldRemainBlocked(
   if (legalHold) {
     return {
       blocked: true,
+
       reason:
         "Article is under legal hold",
     };
@@ -383,6 +653,7 @@ export function shouldRemainBlocked(
   ) {
     return {
       blocked: true,
+
       reason:
         "Legal review is required",
     };
@@ -395,6 +666,7 @@ export function shouldRemainBlocked(
   ) {
     return {
       blocked: true,
+
       reason:
         "Takedown complaint is active",
     };
@@ -403,6 +675,7 @@ export function shouldRemainBlocked(
 
   return {
     blocked: false,
+
     reason:
       "No active takedown block",
   };
