@@ -14,6 +14,10 @@ import {
 } from "./src/lib/newsAutomation.js";
 
 import {
+  verifyCronRequest,
+} from "./src/lib/cronSecurity.js";
+
+import {
   startScheduler,
   stopScheduler,
   getSchedulerStatus,
@@ -408,6 +412,67 @@ app.get(
 
 
 // =============================
+// SECURE VERCEL CRON
+// =============================
+
+app.get(
+  "/api/automation/cron",
+  async (req, res) => {
+
+    const auth =
+      verifyCronRequest(req);
+
+    if (!auth.valid) {
+
+      return res.status(401).json({
+        success: false,
+        error:
+          "Unauthorized cron request",
+      });
+
+    }
+
+
+    try {
+
+      console.log(
+        "⏰ Secure Vercel Cron triggered"
+      );
+
+
+      const report =
+        await runNewsAutomation(
+          pool
+        );
+
+
+      return res.json(
+        report
+      );
+
+    } catch (error) {
+
+      console.error(
+        "❌ Secure cron failed:",
+        error.message
+      );
+
+
+      return res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message,
+
+      });
+
+    }
+  }
+);
+
+
+// =============================
 // AUTOMATION STATUS
 // =============================
 
@@ -664,6 +729,10 @@ async function startServer() {
 
         console.log(
           "⏰ Scheduler: Starting"
+        );
+
+        console.log(
+          "🔐 Cron Security: Enabled"
         );
 
         console.log(
