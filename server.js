@@ -33,7 +33,6 @@ const pool = new Pool({
   },
 });
 
-// Make database available to routes
 app.locals.db = pool;
 
 pool.on("error", (error) => {
@@ -42,6 +41,44 @@ pool.on("error", (error) => {
     error.message
   );
 });
+
+// =============================
+// DATABASE PREPARATION
+// =============================
+
+async function prepareDatabase() {
+  console.log(
+    "🗄️ Checking articles table..."
+  );
+
+  await pool.query(`
+    ALTER TABLE articles
+    ADD COLUMN IF NOT EXISTS content TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE articles
+    ADD COLUMN IF NOT EXISTS published_at TIMESTAMP
+  `);
+
+  await pool.query(`
+    UPDATE articles
+    SET content = description
+    WHERE content IS NULL
+      AND description IS NOT NULL
+  `);
+
+  await pool.query(`
+    UPDATE articles
+    SET published_at = created_at
+    WHERE published_at IS NULL
+      AND created_at IS NOT NULL
+  `);
+
+  console.log(
+    "✅ Articles table is ready"
+  );
+}
 
 // =============================
 // HOME
@@ -81,8 +118,6 @@ app.get("/health", async (req, res) => {
       success: false,
       server: "online",
       database: "error",
-      rssEngine: "unknown",
-      newsApi: "unknown",
       error: error.message,
     });
   }
@@ -170,32 +205,51 @@ app.use((req, res) => {
 // START SERVER
 // =============================
 
-app.listen(PORT, () => {
-  console.log(
-    "================================="
-  );
+async function startServer() {
+  try {
+    await prepareDatabase();
 
-  console.log(
-    "🚀 ZEESHAN NEWS AI"
-  );
+    app.listen(PORT, () => {
+      console.log(
+        "================================="
+      );
 
-  console.log(
-    `🌐 Server running on port ${PORT}`
-  );
+      console.log(
+        "🚀 ZEESHAN NEWS AI"
+      );
 
-  console.log(
-    "🗄️ PostgreSQL: Connected"
-  );
+      console.log(
+        `🌐 Server running on port ${PORT}`
+      );
 
-  console.log(
-    "📰 RSS Engine: Ready"
-  );
+      console.log(
+        "🗄️ PostgreSQL: Connected"
+      );
 
-  console.log(
-    "📰 News API: Connected"
-  );
+      console.log(
+        "📰 RSS Engine: Ready"
+      );
 
-  console.log(
-    "================================="
-  );
-});
+      console.log(
+        "📰 News API: Connected"
+      );
+
+      console.log(
+        "🤖 AI Database: Ready"
+      );
+
+      console.log(
+        "================================="
+      );
+    });
+  } catch (error) {
+    console.error(
+      "❌ Server startup failed:",
+      error.message
+    );
+
+    process.exit(1);
+  }
+}
+
+startServer();
