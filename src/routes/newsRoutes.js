@@ -5,6 +5,9 @@ import {
   getNewsCount,
   searchNews,
   getNewsById,
+  getNewsByCategory,
+  getCategoryCounts,
+  getTrendingNews,
 } from "../lib/newsService.js";
 
 import {
@@ -174,6 +177,152 @@ router.get(
 
       console.error(
         "❌ News search route failed:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+);
+
+
+// ========================================
+// TRENDING NEWS
+// ========================================
+
+router.get(
+  "/trending",
+  async (req, res) => {
+    try {
+
+      const limit =
+        req.query.limit || 10;
+
+      const articles =
+        await getTrendingNews(
+          req.app.locals.db,
+          limit
+        );
+
+      res.json({
+        success: true,
+        total: articles.length,
+        articles,
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Trending news route failed:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+);
+
+
+// ========================================
+// CATEGORY LIST + COUNTS
+// ========================================
+
+router.get(
+  "/categories",
+  async (req, res) => {
+    try {
+
+      const categories =
+        await getCategoryCounts(
+          req.app.locals.db
+        );
+
+      res.json({
+        success: true,
+        categories,
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Category counts route failed:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+);
+
+
+// ========================================
+// CATEGORY NEWS
+// ========================================
+
+router.get(
+  "/category/:category",
+  async (req, res) => {
+    try {
+
+      const category =
+        String(
+          req.params.category || ""
+        )
+          .trim()
+          .toLowerCase();
+
+      const allowedCategories = [
+        "world",
+        "politics",
+        "technology",
+        "business",
+        "sports",
+        "entertainment",
+      ];
+
+      if (
+        !allowedCategories.includes(
+          category
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Invalid news category",
+          allowedCategories,
+        });
+      }
+
+      const limit =
+        req.query.limit || 50;
+
+      const articles =
+        await getNewsByCategory(
+          req.app.locals.db,
+          category,
+          limit
+        );
+
+      res.json({
+        success: true,
+        category,
+        total: articles.length,
+        articles,
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Category news route failed:",
         error.message
       );
 
