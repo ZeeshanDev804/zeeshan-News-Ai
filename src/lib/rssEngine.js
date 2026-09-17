@@ -1,4 +1,5 @@
 import Parser from "rss-parser";
+import { findSimilarArticle } from "./dedup.js";
 
 const parser = new Parser({
   timeout: 15000,
@@ -52,6 +53,7 @@ export async function runRssEngine(db) {
     fetched: 0,
     saved: 0,
     duplicates: 0,
+    similarDuplicates: 0,
     failedSources: 0,
   };
 
@@ -59,9 +61,7 @@ export async function runRssEngine(db) {
     console.log(`📰 Fetching: ${source.name}`);
 
     try {
-      const feed = await parser.parseURL(
-        source.url
-      );
+      const feed = await parser.parseURL(source.url);
 
       report.sources++;
 
@@ -81,8 +81,20 @@ export async function runRssEngine(db) {
             ""
         );
 
-        const publishedAt =
-          getPublishedDate(item);
+        const publishedAt = getPublishedDate(item);
+
+        const similarArticle =
+          await findSimilarArticle(db, title);
+
+        if (similarArticle?.duplicate) {
+          report.similarDuplicates++;
+
+          console.log(
+            `♻️ Similar news skipped: ${title}`
+          );
+
+          continue;
+        }
 
         const result = await db.query(
           `
