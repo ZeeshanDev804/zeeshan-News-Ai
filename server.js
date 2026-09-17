@@ -1,76 +1,118 @@
 import express from "express";
 import dotenv from "dotenv";
 import pg from "pg";
-import { runRssEngine } from "./src/lib/rssEngine.js";
+
+import {
+  runRssEngine,
+} from "./src/lib/rssEngine.js";
+
 import newsRoutes from "./src/routes/newsRoutes.js";
+
+import {
+  runNewsAutomation,
+  getAutomationStatus,
+} from "./src/lib/newsAutomation.js";
+
 
 dotenv.config();
 
 const { Pool } = pg;
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+const PORT =
+  process.env.PORT || 3000;
+
 
 // =============================
 // MIDDLEWARE
 // =============================
 
-app.use(express.json());
+app.use(
+  express.json()
+);
+
 
 // =============================
 // STATIC WEBSITE
 // =============================
 
-app.use(express.static("public"));
+app.use(
+  express.static("public")
+);
+
 
 // =============================
 // DATABASE
 // =============================
 
-if (!process.env.DATABASE_URL) {
-  console.error("❌ DATABASE_URL is missing");
+if (
+  !process.env.DATABASE_URL
+) {
+  console.error(
+    "❌ DATABASE_URL is missing"
+  );
+
   process.exit(1);
 }
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
-});
 
-app.locals.db = pool;
+const pool =
+  new Pool({
+    connectionString:
+      process.env.DATABASE_URL,
 
-pool.on("error", (error) => {
-  console.error(
-    "❌ Unexpected database error:",
-    error.message
-  );
-});
+    ssl: {
+      rejectUnauthorized: false,
+    },
+  });
+
+
+app.locals.db =
+  pool;
+
+
+pool.on(
+  "error",
+  (error) => {
+
+    console.error(
+      "❌ Unexpected database error:",
+      error.message
+    );
+
+  }
+);
+
 
 // =============================
 // DATABASE PREPARATION
 // =============================
 
 async function prepareDatabase() {
+
   console.log(
     "🗄️ Checking articles table..."
   );
+
 
   await pool.query(`
     ALTER TABLE articles
     ADD COLUMN IF NOT EXISTS content TEXT
   `);
 
+
   await pool.query(`
     ALTER TABLE articles
     ADD COLUMN IF NOT EXISTS source TEXT
   `);
 
+
   await pool.query(`
     ALTER TABLE articles
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMP
   `);
+
 
   await pool.query(`
     UPDATE articles
@@ -79,6 +121,7 @@ async function prepareDatabase() {
       AND description IS NOT NULL
   `);
 
+
   await pool.query(`
     UPDATE articles
     SET published_at = created_at
@@ -86,188 +129,408 @@ async function prepareDatabase() {
       AND created_at IS NOT NULL
   `);
 
+
   console.log(
     "✅ Articles table is ready"
   );
 }
 
+
 // =============================
 // HOME
 // =============================
 
-app.get("/", (req, res) => {
-  res.sendFile(
-    "index.html",
-    {
-      root: "public",
-    }
-  );
-});
+app.get(
+  "/",
+  (req, res) => {
+
+    res.sendFile(
+      "index.html",
+      {
+        root: "public",
+      }
+    );
+
+  }
+);
+
 
 // =============================
 // HEALTH CHECK
 // =============================
 
-app.get("/health", async (req, res) => {
-  try {
-    await pool.query("SELECT 1");
+app.get(
+  "/health",
+  async (req, res) => {
 
-    res.json({
-      success: true,
-      server: "online",
-      database: "connected",
-      rssEngine: "ready",
-      newsApi: "ready",
-    });
-  } catch (error) {
-    console.error(
-      "❌ Health check failed:",
-      error.message
-    );
+    try {
 
-    res.status(500).json({
-      success: false,
-      server: "online",
-      database: "error",
-      rssEngine: "unknown",
-      newsApi: "unknown",
-      error: error.message,
-    });
+      await pool.query(
+        "SELECT 1"
+      );
+
+
+      res.json({
+
+        success: true,
+
+        server:
+          "online",
+
+        database:
+          "connected",
+
+        rssEngine:
+          "ready",
+
+        newsApi:
+          "ready",
+
+        automation:
+          "ready",
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Health check failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        server:
+          "online",
+
+        database:
+          "error",
+
+        rssEngine:
+          "unknown",
+
+        newsApi:
+          "unknown",
+
+        automation:
+          "unknown",
+
+        error:
+          error.message,
+
+      });
+
+    }
   }
-});
+);
+
 
 // =============================
 // DATABASE STATUS
 // =============================
 
-app.get("/api/database", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT NOW() AS time"
-    );
+app.get(
+  "/api/database",
+  async (req, res) => {
 
-    res.json({
-      success: true,
-      database: "connected",
-      serverTime: result.rows[0].time,
-    });
-  } catch (error) {
-    console.error(
-      "❌ Database check failed:",
-      error.message
-    );
+    try {
 
-    res.status(500).json({
-      success: false,
-      database: "error",
-      error: error.message,
-    });
+      const result =
+        await pool.query(
+          "SELECT NOW() AS time"
+        );
+
+
+      res.json({
+
+        success: true,
+
+        database:
+          "connected",
+
+        serverTime:
+          result.rows[0].time,
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Database check failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        database:
+          "error",
+
+        error:
+          error.message,
+
+      });
+
+    }
   }
-});
+);
+
 
 // =============================
 // NEWS API ROUTES
 // =============================
 
-app.use("/api/news", newsRoutes);
+app.use(
+  "/api/news",
+  newsRoutes
+);
+
 
 // =============================
 // RSS ENGINE
 // =============================
 
-app.get("/api/rss/run", async (req, res) => {
-  try {
-    console.log(
-      "🚀 RSS Engine request received"
-    );
+app.get(
+  "/api/rss/run",
+  async (req, res) => {
 
-    const report =
-      await runRssEngine(pool);
+    try {
 
-    res.json({
-      success: true,
-      message: "RSS Engine completed",
-      report,
-    });
-  } catch (error) {
-    console.error(
-      "❌ RSS Engine failed:",
-      error.message
-    );
+      console.log(
+        "🚀 RSS Engine request received"
+      );
 
-    res.status(500).json({
-      success: false,
-      message: "RSS Engine failed",
-      error: error.message,
-    });
+
+      const report =
+        await runRssEngine(
+          pool
+        );
+
+
+      res.json({
+
+        success: true,
+
+        message:
+          "RSS Engine completed",
+
+        report,
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ RSS Engine failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        message:
+          "RSS Engine failed",
+
+        error:
+          error.message,
+
+      });
+
+    }
   }
-});
+);
+
+
+// =============================
+// FULL NEWS AUTOMATION
+// =============================
+
+app.get(
+  "/api/automation/run",
+  async (req, res) => {
+
+    try {
+
+      console.log(
+        "🤖 News automation request received"
+      );
+
+
+      const report =
+        await runNewsAutomation(
+          pool
+        );
+
+
+      res.json(
+        report
+      );
+
+    } catch (error) {
+
+      console.error(
+        "❌ News automation route failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message,
+
+      });
+
+    }
+  }
+);
+
+
+// =============================
+// AUTOMATION STATUS
+// =============================
+
+app.get(
+  "/api/automation/status",
+  (req, res) => {
+
+    try {
+
+      const status =
+        getAutomationStatus();
+
+
+      res.json({
+
+        success: true,
+
+        ...status,
+
+      });
+
+    } catch (error) {
+
+      console.error(
+        "❌ Automation status failed:",
+        error.message
+      );
+
+
+      res.status(500).json({
+
+        success: false,
+
+        error:
+          error.message,
+
+      });
+
+    }
+  }
+);
+
 
 // =============================
 // 404 HANDLER
 // =============================
 
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "Route not found",
-    path: req.originalUrl,
-  });
-});
+app.use(
+  (req, res) => {
+
+    res.status(404).json({
+
+      success: false,
+
+      error:
+        "Route not found",
+
+      path:
+        req.originalUrl,
+
+    });
+
+  }
+);
+
 
 // =============================
 // START SERVER
 // =============================
 
 async function startServer() {
+
   try {
+
     await prepareDatabase();
 
-    app.listen(PORT, () => {
-      console.log(
-        "================================="
-      );
 
-      console.log(
-        "🚀 ZEESHAN NEWS AI"
-      );
+    app.listen(
+      PORT,
+      () => {
 
-      console.log(
-        `🌐 Server running on port ${PORT}`
-      );
+        console.log(
+          "================================="
+        );
 
-      console.log(
-        "🗄️ PostgreSQL: Connected"
-      );
+        console.log(
+          "🚀 ZEESHAN NEWS AI"
+        );
 
-      console.log(
-        "📰 RSS Engine: Ready"
-      );
+        console.log(
+          `🌐 Server running on port ${PORT}`
+        );
 
-      console.log(
-        "📰 News API: Connected"
-      );
+        console.log(
+          "🗄️ PostgreSQL: Connected"
+        );
 
-      console.log(
-        "🤖 AI Database: Ready"
-      );
+        console.log(
+          "📰 RSS Engine: Ready"
+        );
 
-      console.log(
-        "🌐 Website: Ready"
-      );
+        console.log(
+          "📰 News API: Connected"
+        );
 
-      console.log(
-        "================================="
-      );
-    });
+        console.log(
+          "🤖 AI Database: Ready"
+        );
+
+        console.log(
+          "⚙️ Automation: Ready"
+        );
+
+        console.log(
+          "🌐 Website: Ready"
+        );
+
+        console.log(
+          "================================="
+        );
+
+      }
+    );
+
   } catch (error) {
+
     console.error(
       "❌ Server startup failed:",
       error.message
     );
 
+
     process.exit(1);
   }
 }
+
 
 startServer();
