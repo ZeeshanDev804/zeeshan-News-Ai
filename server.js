@@ -58,6 +58,11 @@ async function prepareDatabase() {
 
   await pool.query(`
     ALTER TABLE articles
+    ADD COLUMN IF NOT EXISTS source TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE articles
     ADD COLUMN IF NOT EXISTS published_at TIMESTAMP
   `);
 
