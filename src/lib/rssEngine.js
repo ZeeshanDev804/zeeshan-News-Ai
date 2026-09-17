@@ -36,15 +36,15 @@ function getPublishedDate(item) {
 
   const date = new Date(item.pubDate);
 
-  if (Number.isNaN(date.getTime())) {
-    return new Date();
-  }
-
-  return date;
+  return Number.isNaN(date.getTime())
+    ? new Date()
+    : date;
 }
 
 export async function runRssEngine(db) {
-  console.log("🚀 ZEESHAN NEWS AI — RSS ENGINE STARTED");
+  console.log(
+    "🚀 ZEESHAN NEWS AI — RSS ENGINE STARTED"
+  );
 
   const report = {
     success: true,
@@ -59,7 +59,9 @@ export async function runRssEngine(db) {
     console.log(`📰 Fetching: ${source.name}`);
 
     try {
-      const feed = await parser.parseURL(source.url);
+      const feed = await parser.parseURL(
+        source.url
+      );
 
       report.sources++;
 
@@ -74,12 +76,13 @@ export async function runRssEngine(db) {
 
         const content = cleanText(
           item.contentSnippet ||
-          item.content ||
-          item.summary ||
-          ""
+            item.content ||
+            item.summary ||
+            ""
         );
 
-        const publishedAt = getPublishedDate(item);
+        const publishedAt =
+          getPublishedDate(item);
 
         const result = await db.query(
           `
@@ -105,7 +108,9 @@ export async function runRssEngine(db) {
         }
       }
 
-      console.log(`✅ ${source.name} completed`);
+      console.log(
+        `✅ ${source.name} completed`
+      );
     } catch (error) {
       report.failedSources++;
 
@@ -116,7 +121,10 @@ export async function runRssEngine(db) {
     }
   }
 
-  console.log("🏁 RSS ENGINE FINISHED");
+  console.log(
+    "🏁 RSS ENGINE FINISHED"
+  );
+
   console.log(report);
 
   return report;
