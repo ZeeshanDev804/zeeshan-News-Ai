@@ -10,48 +10,196 @@
 
   <meta
     name="description"
-    content="ZEESHAN NEWS AI — AI-powered global news platform covering world news, technology, business, sports and entertainment."
+    content="ZEESHAN NEWS AI — AI-powered global news platform with verified, original and personalized news."
   />
 
   <meta
     name="robots"
-    content="index, follow"
+    content="index,follow"
   />
 
-  <title>ZEESHAN NEWS AI</title>
+  <title>
+    ZEESHAN NEWS AI
+  </title>
 
   <link
     rel="stylesheet"
     href="/style.css"
   />
+
+  <style>
+    .notification-center {
+      margin: 40px auto;
+      max-width: 1100px;
+      padding: 28px;
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 20px;
+      background: rgba(10,14,24,.82);
+      box-shadow: 0 20px 60px rgba(0,0,0,.28);
+    }
+
+    .notification-center-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+
+    .notification-kicker {
+      font-size: 12px;
+      letter-spacing: 2px;
+      opacity: .65;
+    }
+
+    .notification-center h2 {
+      margin: 8px 0;
+    }
+
+    .notification-center p {
+      opacity: .72;
+      line-height: 1.6;
+    }
+
+    .notification-status {
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.1);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .notification-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+
+    .notification-btn {
+      border: 1px solid rgba(255,255,255,.1);
+      background: rgba(255,255,255,.04);
+      color: inherit;
+      padding: 12px 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .notification-btn-primary {
+      background: rgba(70,130,255,.18);
+      border-color: rgba(70,130,255,.4);
+    }
+
+    .notification-btn-danger {
+      border-color: rgba(255,80,80,.3);
+    }
+
+    .notification-preferences {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .notification-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 15px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.07);
+      background: rgba(255,255,255,.025);
+      cursor: pointer;
+    }
+
+    .notification-option input {
+      margin-top: 4px;
+    }
+
+    .notification-option strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .notification-option small {
+      opacity: .65;
+    }
+
+    .notification-frequency {
+      display: grid;
+      gap: 8px;
+      max-width: 420px;
+    }
+
+    .notification-frequency select {
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.1);
+      background: #101522;
+      color: inherit;
+    }
+
+    .notification-message {
+      min-height: 24px;
+      margin-top: 18px;
+    }
+
+    .notification-message[data-type="success"] {
+      opacity: 1;
+    }
+
+    .notification-message[data-type="error"] {
+      opacity: 1;
+    }
+
+    .notification-privacy {
+      font-size: 13px;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .notification-center {
+        margin: 24px 14px;
+        padding: 20px;
+      }
+
+      .notification-center-header {
+        flex-direction: column;
+      }
+
+      .notification-actions {
+        flex-direction: column;
+      }
+
+      .notification-btn {
+        width: 100%;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
-  <!-- =========================
-       HEADER
-  ========================== -->
-
   <header class="site-header">
 
-    <div class="header-inner">
+    <div class="container header-inner">
 
       <a
         href="/"
         class="brand"
-        aria-label="ZEESHAN NEWS AI Home"
       >
-        <span class="brand-mark">Z</span>
+        <span class="brand-mark">
+          Z
+        </span>
 
         <span class="brand-text">
-          <strong>ZEESHAN NEWS AI</strong>
-          <small>GLOBAL NEWS INTELLIGENCE</small>
+          ZEESHAN NEWS AI
         </span>
       </a>
 
       <button
-        class="menu-button"
-        id="menuButton"
+        class="mobile-menu-btn"
+        id="mobile-menu-btn"
         type="button"
         aria-label="Open menu"
       >
@@ -59,13 +207,36 @@
       </button>
 
       <nav
-        class="main-nav"
-        id="mainNav"
-        aria-label="Main navigation"
+        class="site-nav"
+        id="site-nav"
       >
-        <a href="#latest">Latest</a>
-        <a href="#trending">Trending</a>
-        <a href="#categories">Categories</a>
+        <a href="/">
+          Home
+        </a>
+
+        <a href="/?category=world">
+          World
+        </a>
+
+        <a href="/?category=technology">
+          Technology
+        </a>
+
+        <a href="/?category=business">
+          Business
+        </a>
+
+        <a href="/?category=sports">
+          Sports
+        </a>
+
+        <a href="/?category=entertainment">
+          Entertainment
+        </a>
+
+        <a href="#notifications">
+          Notifications
+        </a>
       </nav>
 
     </div>
@@ -73,149 +244,312 @@
   </header>
 
 
-  <!-- =========================
-       HERO
-  ========================== -->
-
   <main>
 
     <section class="hero">
 
-      <div class="hero-content">
+      <div class="container">
 
-        <span class="eyebrow">
-          AI-POWERED NEWS PLATFORM
-        </span>
+        <div class="hero-content">
 
-        <h1>
-          World News,
-          <span>Intelligently Organized.</span>
-        </h1>
+          <span class="eyebrow">
+            AI-POWERED GLOBAL NEWS
+          </span>
 
-        <p>
-          Discover the latest global stories,
-          technology, business, sports and
-          entertainment news in one place.
-        </p>
+          <h1>
+            News that matters.
+            <br />
+            Powered by AI.
+          </h1>
 
-        <!-- SEARCH -->
+          <p>
+            Discover global news, technology,
+            business, sports, entertainment and
+            trending stories in one intelligent
+            platform.
+          </p>
 
-        <form
-          class="search-box"
-          id="searchForm"
-        >
+          <div class="hero-search">
 
-          <input
-            id="searchInput"
-            type="search"
-            placeholder="Search news..."
-            autocomplete="off"
-          />
+            <input
+              type="search"
+              id="search-input"
+              placeholder="Search news..."
+              autocomplete="off"
+            />
 
-          <button type="submit">
-            Search
-          </button>
+            <button
+              id="search-button"
+              type="button"
+            >
+              Search
+            </button>
 
-        </form>
+          </div>
 
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         STATUS BAR
-    ========================== -->
-
-    <section class="status-section">
-
-      <div class="status-card">
-
-        <span class="status-dot"></span>
-
-        <span>
-          NEWS ENGINE
-        </span>
-
-        <strong id="engineStatus">
-          CONNECTING
-        </strong>
-
-      </div>
-
-      <div class="status-card">
-
-        <span>
-          ARTICLES
-        </span>
-
-        <strong id="articleCount">
-          —
-        </strong>
+        </div>
 
       </div>
 
     </section>
 
 
-    <!-- =========================
-         TRENDING
-    ========================== -->
+    <section class="container">
+
+      <div class="status-grid">
+
+        <div class="status-card">
+
+          <span>
+            ENGINE
+          </span>
+
+          <strong>
+            ONLINE
+          </strong>
+
+        </div>
+
+        <div class="status-card">
+
+          <span>
+            NEWS
+          </span>
+
+          <strong
+            id="article-count"
+          >
+            —
+          </strong>
+
+        </div>
+
+        <div class="status-card">
+
+          <span>
+            AI
+          </span>
+
+          <strong>
+            ACTIVE
+          </strong>
+
+        </div>
+
+      </div>
+
+    </section>
+
 
     <section
-      class="news-section"
+      class="container section"
       id="trending"
     >
 
       <div class="section-heading">
 
         <div>
-          <span class="section-label">
-            01 / SIGNAL
+
+          <span class="eyebrow">
+            LIVE SIGNAL
           </span>
 
           <h2>
             Trending News
           </h2>
+
         </div>
 
       </div>
 
       <div
+        id="trending-list"
         class="news-grid"
-        id="trendingNews"
       >
-
-        <div class="loading-card">
+        <p>
           Loading trending news...
-        </div>
-
+        </p>
       </div>
 
     </section>
 
 
-    <!-- =========================
-         LATEST
-    ========================== -->
-
     <section
-      class="news-section"
+      class="container section"
       id="latest"
     >
 
       <div class="section-heading">
 
         <div>
-          <span class="section-label">
-            02 / LATEST
+
+          <span class="eyebrow">
+            LATEST
           </span>
 
           <h2>
             Latest News
           </h2>
+
         </div>
 
       </div>
 
       <div
+        id="latest-list"
+        class="news-grid"
+      >
+        <p>
+          Loading latest news...
+        </p>
+      </div>
+
+    </section>
+
+
+    <section
+      class="container section"
+      id="categories"
+    >
+
+      <div class="section-heading">
+
+        <div>
+
+          <span class="eyebrow">
+            EXPLORE
+          </span>
+
+          <h2>
+            Categories
+          </h2>
+
+        </div>
+
+      </div>
+
+      <div
+        id="category-list"
+        class="category-grid"
+      >
+
+        <button
+          type="button"
+          data-category="world"
+        >
+          World
+        </button>
+
+        <button
+          type="button"
+          data-category="politics"
+        >
+          Politics
+        </button>
+
+        <button
+          type="button"
+          data-category="technology"
+        >
+          Technology
+        </button>
+
+        <button
+          type="button"
+          data-category="business"
+        >
+          Business
+        </button>
+
+        <button
+          type="button"
+          data-category="sports"
+        >
+          Sports
+        </button>
+
+        <button
+          type="button"
+          data-category="entertainment"
+        >
+          Entertainment
+        </button>
+
+      </div>
+
+    </section>
+
+
+    <section
+      class="container section"
+      id="search-results-section"
+      hidden
+    >
+
+      <div class="section-heading">
+
+        <div>
+
+          <span class="eyebrow">
+            SEARCH
+          </span>
+
+          <h2>
+            Search Results
+          </h2>
+
+        </div>
+
+      </div>
+
+      <div
+        id="search-results"
+        class="news-grid"
+      ></div>
+
+    </section>
+
+
+    <section
+      class="container"
+      id="notifications"
+    >
+      <!-- Notification Center loads here -->
+    </section>
+
+  </main>
+
+
+  <footer class="site-footer">
+
+    <div class="container">
+
+      <p>
+        © 2026 ZEESHAN NEWS AI.
+        All rights reserved.
+      </p>
+
+      <p>
+        AI-assisted news discovery with
+        source attribution and legal safeguards.
+      </p>
+
+    </div>
+
+  </footer>
+
+
+  <script
+    src="/app.js"
+  ></script>
+
+  <script
+    src="/notifications.js"
+  ></script>
+
+  <script
+    src="/notification-center.js"
+  ></script>
+
+</body>
+</html>
