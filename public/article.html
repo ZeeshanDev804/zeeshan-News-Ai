@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <meta
+    name="description"
+    id="metaDescription"
+    content="ZEESHAN NEWS AI — Global news intelligence."
+  />
+
+  <meta
+    name="robots"
+    content="index, follow"
+  />
+
+  <meta
+    property="og:type"
+    content="article"
+  />
+
+  <meta
+    property="og:title"
+    id="ogTitle"
+    content="ZEESHAN NEWS AI"
+  />
+
+  <meta
+    property="og:description"
+    id="ogDescription"
+    content="Global news intelligence."
+  />
+
+  <title id="pageTitle">
+    ZEESHAN NEWS AI
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="/style.css"
+  />
+
+  <style>
+    .article-page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 70px 20px 100px;
+    }
+
+    .article-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 35px;
+      color: var(--accent, #7c5cff);
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .article-header {
+      margin-bottom: 35px;
+    }
+
+    .article-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .article-meta span {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 12px;
+      border: 1px solid var(--border, #2a2a35);
+      border-radius: 999px;
+      background: var(--card, #15151d);
+      color: var(--muted, #999);
+      font-size: 13px;
+    }
+
+    .article-header h1 {
+      margin: 0;
+      font-size: clamp(32px, 6vw, 64px);
+      line-height: 1.05;
+      letter-spacing: -1.5px;
+    }
+
+    .article-content {
+      padding: 30px 0;
+      border-top: 1px solid var(--border, #2a2a35);
+      border-bottom: 1px solid var(--border, #2a2a35);
+    }
+
+    .article-summary {
+      font-size: 21px;
+      line-height: 1.7;
+      color: var(--text, #eee);
+      margin-bottom: 35px;
+    }
+
+    .article-source-content {
+      font-size: 17px;
+      line-height: 1.85;
+      color: var(--muted, #b5b5bd);
+      white-space: pre-wrap;
+    }
+
+    .article-points {
+      margin: 35px 0;
+      padding: 25px;
+      border: 1px solid var(--border, #2a2a35);
+      border-radius: 16px;
+      background: var(--card, #15151d);
+    }
+
+    .article-points h2 {
+      margin-top: 0;
+    }
+
+    .article-points ul {
+      margin-bottom: 0;
+      padding-left: 22px;
+    }
+
+    .article-points li {
+      margin: 10px 0;
+      line-height: 1.6;
+    }
+
+    .article-source-box {
+      margin-top: 35px;
+      padding: 25px;
+      border: 1px solid var(--border, #2a2a35);
+      border-radius: 16px;
+      background: var(--card, #15151d);
+    }
+
+    .article-source-box strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .article-source-link {
+      display: inline-flex;
+      margin-top: 15px;
+      padding: 12px 18px;
+      border-radius: 10px;
+      background: var(--accent, #7c5cff);
+      color: white;
+      text-decoration: none;
+      font-weight: 700;
+    }
+
+    .article-error {
+      text-align: center;
+      padding: 80px 20px;
+    }
+
+    .article-loading {
+      text-align: center;
+      padding: 80px 20px;
+      color: var(--muted, #999);
+    }
+
+    @media (max-width: 600px) {
+      .article-page {
+        padding: 40px 16px 70px;
+      }
+
+      .article-summary {
+        font-size: 18px;
+      }
+
+      .article-source-content {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <header class="site-header">
+    <div class="header-inner">
+
+      <a
+        href="/"
+        class="brand"
+        aria-label="ZEESHAN NEWS AI Home"
+      >
+        <span class="brand-mark">Z</span>
+
+        <span class="brand-text">
+          <strong>ZEESHAN NEWS AI</strong>
+          <small>
+            GLOBAL NEWS INTELLIGENCE
+          </small>
+        </span>
+      </a>
+
+      <nav
+        class="main-nav"
+        aria-label="Main navigation"
+      >
+        <a href="/">Home</a>
+        <a href="/#latest">Latest</a>
+        <a href="/#trending">Trending</a>
+        <a href="/#categories">Categories</a>
+      </nav>
+
+    </div>
+  </header>
+
+
+  <main>
+
+    <section
+      class="article-page"
+      id="articlePage"
+    >
+
+      <a
+        href="/"
+        class="article-back"
+      >
+        ← Back to News
+      </a>
+
+
+      <div
+        id="articleLoading"
+        class="article-loading"
+      >
+        Loading article...
+      </div>
+
+
+      <div
+        id="articleError"
+        class="article-error hidden"
+      >
+        <h1>Article Not Found</h1>
+
+        <p>
+          The requested news article could
+          not be found.
+        </p>
+
+        <a
+          href="/"
+          class="article-source-link"
+        >
+          Return Home
+        </a>
+      </div>
+
+
+      <article
+        id="articleContent"
+        class="hidden"
+      >
+
+        <header class="article-header">
+
+          <div class="article-meta">
+
+            <span id="articleSource">
+              Source
+            </span>
+
+            <span id="articleCategory">
+              World
+            </span>
+
+            <span id="articleDate">
+              Date
+            </span>
+
+          </div>
+
+
+          <h1 id="articleTitle">
+            News Article
+          </h1>
+
+        </header>
+
+
+        <div class="article-content">
+
+          <p
+            class="article-summary"
+            id="articleSummary"
+          >
+            Loading summary...
+          </p>
+
+
+          <div
+            class="article-points hidden"
+            id="articlePointsBox"
+          >
+
+            <h2>
+              Key Points
+            </h2>
+
+            <ul
+              id="articlePoints"
+            ></ul>
+
+          </div>
+
+
+          <div
+            class="article-source-content"
+            id="articleOriginalContent"
+          ></div>
+
+
+          <div class="article-source-box">
+
+            <strong>
+              Original Source
+            </strong>
+
+            <span id="sourceName">
+              —
+            </span>
+
+            <br />
+
+            <a
+              id="originalSourceLink"
+              class="article-source-link"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Read Original Source →
+            </a>
+
+          </div>
+
+        </div>
+
+      </article>
+
+    </section>
+
+  </main>
+
+
+  <footer class="site-footer">
+
+    <div class="footer-inner">
+
+      <div>
+
+        <div class="footer-brand">
+          ZEESHAN NEWS AI
+        </div>
+
+        <p>
+          AI-powered global news
+          intelligence platform.
+        </p>
+
+      </div>
+
+      <div class="footer-links">
+
+        <a href="/">
+          Home
+        </a>
+
+        <a href="/#latest">
+          Latest
+        </a>
+
+        <a href="/#categories">
+          Categories
+        </a>
+
+      </div>
+
+    </div>
+
+
+    <div class="footer-bottom">
+
+      <span>
+        © 2026 ZEESHAN NEWS AI
+      </span>
+
+      <span>
+        Built by Zeeshan Afzal
+      </span>
+
+    </div>
+
+  </footer>
+
+
+  <script>
+
+    // ========================================
+    // ZEESHAN NEWS AI
+    // ARTICLE PAGE
+    // ========================================
+
+    const loading =
+      document.getElementById(
+        "articleLoading"
+      );
+
+    const errorBox =
+      document.getElementById(
+        "articleError"
+      );
+
+    const articleContent =
+      document.getElementById(
+        "articleContent"
+      );
+
+    const articleTitle =
+      document.getElementById(
+        "articleTitle"
+      );
+
+    const articleSummary =
+      document.getElementById(
+        "articleSummary"
+      );
+
+    const articleSource =
+      document.getElementById(
+        "articleSource"
+      );
+
+    const articleCategory =
+      document.getElementById(
+        "articleCategory"
+      );
+
+    const articleDate =
+      document.getElementById(
+        "articleDate"
+      );
+
+    const articleOriginalContent =
+      document.getElementById(
+        "articleOriginalContent"
+      );
+
+    const sourceName =
+      document.getElementById(
+        "sourceName"
+      );
+
+    const originalSourceLink =
+      document.getElementById(
+        "originalSourceLink"
+      );
+
+    const articlePointsBox =
+      document.getElementById(
+        "articlePointsBox"
+      );
+
+    const articlePoints =
+      document.getElementById(
+        "articlePoints"
+      );
+
+
+    // ========================================
+    // HTML ESCAPE
+    // ========================================
+
+    function escapeHTML(
+      value = ""
+    ) {
+      return String(value)
+        .replace(
+          /&/g,
+          "&amp;"
+        )
+        .replace(
+          /</g,
+          "&lt;"
+        )
+        .replace(
+          />/g,
+          "&gt;"
+        )
+        .replace(
+          /"/g,
+          "&quot;"
+        )
+        .replace(
+          /'/g,
+          "&#039;"
+        );
+    }
+
+
+    // ========================================
+    // DATE FORMAT
+    // ========================================
+
+    function formatDate(
+      value
+    ) {
+      if (!value) {
+        return "Unknown date";
+      }
+
+      const date =
+        new Date(value);
+
+      if (
+        Number.isNaN(
+          date.getTime()
+        )
+      ) {
+        return "Unknown date";
+      }
+
+      return date.toLocaleString(
+        undefined,
+        {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        }
+      );
+    }
+
+
+    // ========================================
+    // CATEGORY
+    // ========================================
+
+    function normalizeCategory(
+      value = ""
+    ) {
+      const allowed = [
+        "world",
+        "politics",
+        "technology",
+        "business",
+        "sports",
+        "entertainment",
+      ];
+
+      const category =
+        String(value)
+          .trim()
+          .toLowerCase();
+
+      return allowed.includes(
+        category
+      )
+        ? category
+        : "world";
+    }
+
+
+    // ========================================
+    // GET ARTICLE ID
+    // ========================================
+
+    function getArticleId() {
+
+      const params =
+        new URLSearchParams(
+          window.location.search
+        );
+
+      const id =
+        Number(
+          params.get("id")
+        );
+
+      if (
+        !Number.isInteger(id) ||
+        id <= 0
+      ) {
+        return null;
+      }
+
+      return id;
+    }
+
+
+    // ========================================
+    // LOAD ARTICLE
+    // ========================================
+
+    async function loadArticle() {
+
+      const articleId =
+        getArticleId();
+
+      if (!articleId) {
+
+        loading.classList.add(
+          "hidden"
+        );
+
+        errorBox.classList.remove(
+          "hidden"
+        );
+
+        return;
+      }
+
+
+      try {
+
+        const response =
+          await fetch(
+            `/api/news/article/${articleId}`
+          );
+
+        if (!response.ok) {
+          throw new Error(
+            "Article request failed"
+          );
+        }
+
+        const data =
+          await response.json();
+
+        if (
+          !data.success ||
+          !data.article
+        ) {
+          throw new Error(
+            "Article not found"
+          );
+        }
+
+        renderArticle(
+          data.article
+        );
+
+      } catch (error) {
+
+        console.error(
+          "❌ Article loading failed:",
+          error
+        );
+
+        loading.classList.add(
+          "hidden"
+        );
+
+        errorBox.classList.remove(
+          "hidden"
+        );
+      }
+    }
+
+
+    // ========================================
+    // RENDER ARTICLE
+    // ========================================
+
+    function renderArticle(
+      article
+    ) {
+
+      const title =
+        article.title ||
+        "Untitled news";
+
+      const source =
+        article.source ||
+        "Unknown source";
+
+      const category =
+        normalizeCategory(
+          article.ai_category
+        );
+
+      const summary =
+        article.ai_summary ||
+        article.content ||
+        article.description ||
+        "No summary available.";
+
+      const content =
+        article.content ||
+        article.description ||
+        "";
+
+      const date =
+        formatDate(
+          article.published_at ||
+          article.created_at
+        );
+
+
+      articleTitle.textContent =
+        title;
+
+      articleSummary.textContent =
+        summary;
+
+      articleSource.textContent =
+        source;
+
+      articleCategory.textContent =
+        category.toUpperCase();
+
+      articleDate.textContent =
+        date;
+
+      sourceName.textContent =
+        source;
+
+
+      articleOriginalContent.textContent =
+        content;
+
+
+      if (article.link) {
+
+        originalSourceLink.href =
+          article.link;
+
+      } else {
+
+        originalSourceLink.href =
+          "#";
+
+      }
+
+
+      // ======================================
+      // KEY POINTS
+      // ======================================
+
+      const keyPoints =
+        Array.isArray(
+          article.key_points
+        )
+          ? article.key_points
+          : [];
+
+      if (
+        keyPoints.length > 0
+      ) {
+
+        articlePoints.innerHTML =
+          keyPoints
+            .map(
+              (point) => `
+                <li>
+                  ${escapeHTML(point)}
+                </li>
+              `
+            )
+            .join("");
+
+        articlePointsBox.classList.remove(
+          "hidden"
+        );
+
+      }
+
+
+      // ======================================
+      // SEO
+      // ======================================
+
+      document.title =
+        `${title} | ZEESHAN NEWS AI`;
+
+      document
+        .getElementById(
+          "metaDescription"
+        )
+        .setAttribute(
+          "content",
+          summary.slice(0, 155)
+        );
+
+      document
+        .getElementById(
+          "ogTitle"
+        )
+        .setAttribute(
+          "content",
+          title
+        );
+
+      document
+        .getElementById(
+          "ogDescription"
+        )
+        .setAttribute(
+          "content",
+          summary.slice(0, 200)
+        );
+
+
+      loading.classList.add(
+        "hidden"
+      );
+
+      articleContent.classList.remove(
+        "hidden"
+      );
+    }
+
+
+    // ========================================
+    // START
+    // ========================================
+
+    loadArticle();
+
+  </script>
+
+</body>
+</html>
