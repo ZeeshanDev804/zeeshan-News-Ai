@@ -12,6 +12,43 @@ import {
 const router = express.Router();
 
 // =============================
+// SAVE AI ANALYSIS
+// =============================
+
+async function saveAIAnalysis(db, analysis) {
+  if (
+    !analysis?.success ||
+    !analysis?.articleId
+  ) {
+    return false;
+  }
+
+  const isAIAnalyzed =
+    analysis.status === "ai_analyzed";
+
+  await db.query(
+    `
+    UPDATE articles
+    SET
+      ai_summary = $1,
+      ai_category = $2,
+      ai_sentiment = $3,
+      is_analyzed = $4
+    WHERE id = $5
+    `,
+    [
+      analysis.summary || "",
+      analysis.category || "world",
+      analysis.sentiment || "neutral",
+      isAIAnalyzed,
+      analysis.articleId,
+    ]
+  );
+
+  return true;
+}
+
+// =============================
 // LATEST NEWS
 // =============================
 
@@ -131,6 +168,7 @@ router.get("/analyze/:id", async (req, res) => {
         id,
         title,
         content,
+        description,
         source,
         link,
         published_at
@@ -147,11 +185,21 @@ router.get("/analyze/:id", async (req, res) => {
       });
     }
 
-    const analysis = analyzeNewsArticle(
-      result.rows[0]
-    );
+    const analysis =
+      await analyzeNewsArticle(
+        result.rows[0]
+      );
 
-    res.json(analysis);
+    const saved =
+      await saveAIAnalysis(
+        req.app.locals.db,
+        analysis
+      );
+
+    res.json({
+      ...analysis,
+      savedToDatabase: saved,
+    });
   } catch (error) {
     console.error(
       "❌ AI article analysis failed:",
@@ -172,7 +220,10 @@ router.get("/analyze/:id", async (req, res) => {
 router.get("/analyze", async (req, res) => {
   try {
     const limit = Math.min(
-      Math.max(Number(req.query.limit) || 10, 1),
+      Math.max(
+        Number(req.query.limit) || 10,
+        1
+      ),
       20
     );
 
@@ -182,6 +233,7 @@ router.get("/analyze", async (req, res) => {
         id,
         title,
         content,
+        description,
         source,
         link,
         published_at
@@ -192,13 +244,29 @@ router.get("/analyze", async (req, res) => {
       [limit]
     );
 
-    const analyzed = analyzeNewsBatch(
-      result.rows
-    );
+    const analyzed =
+      await analyzeNewsBatch(
+        result.rows
+      );
+
+    let savedCount = 0;
+
+    for (const analysis of analyzed) {
+      const saved =
+        await saveAIAnalysis(
+          req.app.locals.db,
+          analysis
+        );
+
+      if (saved) {
+        savedCount++;
+      }
+    }
 
     res.json({
       success: true,
       total: analyzed.length,
+      savedToDatabase: savedCount,
       articles: analyzed,
     });
   } catch (error) {
