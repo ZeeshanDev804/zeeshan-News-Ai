@@ -10,6 +10,12 @@ import {
   cleanupOldArticles,
 } from "./cleanupEngine.js";
 
+import {
+  createAutomationRun,
+  completeAutomationRun,
+  failAutomationRun,
+} from "./automationHistory.js";
+
 let automationRunning = false;
 
 let lastRun = null;
@@ -225,6 +231,8 @@ export async function runNewsAutomation(
   const startedAt =
     new Date();
 
+  let historyRun = null;
+
   console.log(
     "================================="
   );
@@ -238,6 +246,12 @@ export async function runNewsAutomation(
   );
 
   try {
+    historyRun =
+      await createAutomationRun(
+        db,
+        startedAt
+      );
+
     const rssReport =
       await runRssEngine(
         db
@@ -272,6 +286,14 @@ export async function runNewsAutomation(
       cleanup:
         cleanupReport,
     };
+
+    if (historyRun?.id) {
+      await completeAutomationRun(
+        db,
+        historyRun.id,
+        report
+      );
+    }
 
     lastRun =
       completedAt;
@@ -311,6 +333,24 @@ export async function runNewsAutomation(
       error:
         error.message,
     };
+
+    if (historyRun?.id) {
+      try {
+        await failAutomationRun(
+          db,
+          historyRun.id,
+          error,
+          report
+        );
+      } catch (
+        historyError
+      ) {
+        console.error(
+          "❌ Failed to save automation failure history:",
+          historyError.message
+        );
+      }
+    }
 
     lastRun =
       completedAt;
