@@ -11,12 +11,6 @@ import {
 
 const router = express.Router();
 
-
-// ========================================
-// CREATE TAKEDOWN COMPLAINT
-// POST /api/takedown
-// ========================================
-
 router.post("/", async (req, res) => {
   try {
     const db = req.app.locals.db;
@@ -56,12 +50,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-
-// ========================================
-// GET TAKEDOWN CASES
-// GET /api/takedown
-// ========================================
-
 router.get("/", async (req, res) => {
   try {
     const db = req.app.locals.db;
@@ -97,12 +85,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-
-// ========================================
-// GET SINGLE TAKEDOWN CASE
-// GET /api/takedown/:articleId
-// ========================================
-
 router.get(
   "/:articleId",
   async (req, res) => {
@@ -118,7 +100,7 @@ router.get(
       if (!caseData) {
         return res.status(404).json({
           success: false,
-          error: "Article not found",
+          error: "Takedown complaint not found",
         });
       }
 
@@ -140,12 +122,6 @@ router.get(
     }
   }
 );
-
-
-// ========================================
-// CHANGE TAKEDOWN STATUS
-// PATCH /api/takedown/:articleId/status
-// ========================================
 
 router.patch(
   "/:articleId/status",
@@ -183,12 +159,6 @@ router.patch(
     }
   }
 );
-
-
-// ========================================
-// RESOLVE TAKEDOWN
-// POST /api/takedown/:articleId/resolve
-// ========================================
 
 router.post(
   "/:articleId/resolve",
@@ -228,12 +198,6 @@ router.post(
   }
 );
 
-
-// ========================================
-// REJECT TAKEDOWN
-// POST /api/takedown/:articleId/reject
-// ========================================
-
 router.post(
   "/:articleId/reject",
   async (req, res) => {
@@ -267,6 +231,5 @@ router.post(
     }
   }
 );
-
 
 export default router;
