@@ -25,6 +25,8 @@ import takedownRoutes from "./src/routes/takedownRoutes.js";
 
 import sourceHealthRoutes from "./src/routes/sourceHealthRoutes.js";
 
+import automationHistoryRoutes from "./src/routes/automationHistoryRoutes.js";
+
 dotenv.config();
 
 const {
@@ -210,6 +212,11 @@ app.use(
 app.use(
   "/api/source-health",
   sourceHealthRoutes
+);
+
+app.use(
+  "/api/automation-history",
+  automationHistoryRoutes
 );
 
 app.get(
@@ -440,6 +447,10 @@ async function startServer() {
 
         console.log(
           "📡 Source Health: Enabled"
+        );
+
+        console.log(
+          "📊 Automation History: Enabled"
         );
 
         console.log(
