@@ -2,6 +2,7 @@ const API_BASE = "";
 
 let currentPushSubscription = null;
 
+
 function escapeHTML(value = "") {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -11,25 +12,6 @@ function escapeHTML(value = "") {
     .replace(/'/g, "&#039;");
 }
 
-function safeURL(value = "") {
-  try {
-    const url = new URL(
-      value,
-      window.location.origin
-    );
-
-    if (
-      url.protocol === "http:" ||
-      url.protocol === "https:"
-    ) {
-      return url.href;
-    }
-
-    return "#";
-  } catch {
-    return "#";
-  }
-}
 
 async function fetchJSON(
   url,
@@ -54,6 +36,7 @@ async function fetchJSON(
   return data;
 }
 
+
 function formatDate(
   value
 ) {
@@ -74,6 +57,7 @@ function formatDate(
 
   return date.toLocaleString();
 }
+
 
 function articleCard(
   article
@@ -111,9 +95,15 @@ function articleCard(
 
   return `
     <article class="news-card">
+
       <div class="news-card-meta">
-        <span>${source}</span>
-        <span>${category}</span>
+        <span>
+          ${source}
+        </span>
+
+        <span>
+          ${category}
+        </span>
       </div>
 
       <h3>
@@ -122,9 +112,12 @@ function articleCard(
         </a>
       </h3>
 
-      <p>${summary}</p>
+      <p>
+        ${summary}
+      </p>
 
       <div class="news-card-footer">
+
         <span>
           ${escapeHTML(
             formatDate(
@@ -137,10 +130,13 @@ function articleCard(
         <a href="${articleUrl}">
           Read Article →
         </a>
+
       </div>
+
     </article>
   `;
 }
+
 
 function renderArticles(
   container,
@@ -172,6 +168,7 @@ function renderArticles(
       .join("");
 }
 
+
 async function loadLatestNews() {
   const container =
     document.querySelector(
@@ -183,6 +180,7 @@ async function loadLatestNews() {
   }
 
   try {
+
     const data =
       await fetchJSON(
         "/api/news?limit=30"
@@ -196,6 +194,7 @@ async function loadLatestNews() {
     );
 
   } catch (error) {
+
     console.error(
       "Latest news error:",
       error
@@ -210,6 +209,7 @@ async function loadLatestNews() {
   }
 }
 
+
 async function loadTrendingNews() {
   const container =
     document.querySelector(
@@ -221,6 +221,7 @@ async function loadTrendingNews() {
   }
 
   try {
+
     const data =
       await fetchJSON(
         "/api/news/trending?limit=6"
@@ -234,6 +235,7 @@ async function loadTrendingNews() {
     );
 
   } catch (error) {
+
     console.error(
       "Trending news error:",
       error
@@ -248,6 +250,7 @@ async function loadTrendingNews() {
   }
 }
 
+
 async function loadNewsCount() {
   const element =
     document.querySelector(
@@ -259,6 +262,7 @@ async function loadNewsCount() {
   }
 
   try {
+
     const data =
       await fetchJSON(
         "/api/news/count"
@@ -270,6 +274,7 @@ async function loadNewsCount() {
       ).toLocaleString();
 
   } catch (error) {
+
     console.error(
       "News count error:",
       error
@@ -279,6 +284,7 @@ async function loadNewsCount() {
       "—";
   }
 }
+
 
 async function loadCategories() {
   const container =
@@ -291,6 +297,7 @@ async function loadCategories() {
   }
 
   try {
+
     const data =
       await fetchJSON(
         "/api/news/categories"
@@ -312,6 +319,7 @@ async function loadCategories() {
     container.innerHTML =
       categories
         .map((item) => {
+
           const name =
             typeof item ===
             "string"
@@ -351,24 +359,32 @@ async function loadCategories() {
       .querySelectorAll(
         ".category-button"
       )
-      .forEach((button) => {
-        button.addEventListener(
-          "click",
-          () => {
-            loadCategoryNews(
-              button.dataset.category
-            );
-          }
-        );
-      });
+      .forEach(
+        (button) => {
+
+          button.addEventListener(
+            "click",
+            () => {
+
+              loadCategoryNews(
+                button.dataset.category
+              );
+
+            }
+          );
+
+        }
+      );
 
   } catch (error) {
+
     console.error(
       "Category error:",
       error
     );
   }
 }
+
 
 async function loadCategoryNews(
   category
@@ -383,6 +399,7 @@ async function loadCategoryNews(
   }
 
   try {
+
     const data =
       await fetchJSON(
         `/api/news/category/${encodeURIComponent(
@@ -398,6 +415,7 @@ async function loadCategoryNews(
     );
 
   } catch (error) {
+
     console.error(
       "Category news error:",
       error
@@ -411,6 +429,7 @@ async function loadCategoryNews(
       `;
   }
 }
+
 
 async function searchNews(
   query
@@ -435,6 +454,7 @@ async function searchNews(
   }
 
   try {
+
     const data =
       await fetchJSON(
         `/api/news/search?q=${encodeURIComponent(
@@ -450,6 +470,7 @@ async function searchNews(
     );
 
   } catch (error) {
+
     console.error(
       "Search error:",
       error
@@ -464,9 +485,13 @@ async function searchNews(
   }
 }
 
+
 async function registerServiceWorker() {
   if (
-    !("serviceWorker" in navigator)
+    !(
+      "serviceWorker" in
+      navigator
+    )
   ) {
     console.warn(
       "Service Worker is not supported."
@@ -476,6 +501,7 @@ async function registerServiceWorker() {
   }
 
   try {
+
     const registration =
       await navigator.serviceWorker.register(
         "/sw.js"
@@ -488,6 +514,7 @@ async function registerServiceWorker() {
     return registration;
 
   } catch (error) {
+
     console.error(
       "❌ Service worker registration failed:",
       error
@@ -496,6 +523,7 @@ async function registerServiceWorker() {
     return null;
   }
 }
+
 
 function base64ToUint8Array(
   base64String
@@ -529,6 +557,7 @@ function base64ToUint8Array(
   );
 }
 
+
 async function getVapidPublicKey() {
   const data =
     await fetchJSON(
@@ -546,11 +575,15 @@ async function getVapidPublicKey() {
   return data.publicKey;
 }
 
+
 async function subscribeToPush(
   registration
 ) {
   if (
-    !("PushManager" in window)
+    !(
+      "PushManager" in
+      window
+    )
   ) {
     throw new Error(
       "Push notifications are not supported."
@@ -561,7 +594,8 @@ async function subscribeToPush(
     await Notification.requestPermission();
 
   if (
-    permission !== "granted"
+    permission !==
+    "granted"
   ) {
     throw new Error(
       "Notification permission was not granted."
@@ -572,12 +606,16 @@ async function subscribeToPush(
     await getVapidPublicKey();
 
   let subscription =
-    await registration.pushManager.getSubscription();
+    await registration
+      .pushManager
+      .getSubscription();
 
   if (!subscription) {
+
     subscription =
-      await registration.pushManager.subscribe(
-        {
+      await registration
+        .pushManager
+        .subscribe({
           userVisibleOnly:
             true,
 
@@ -585,8 +623,7 @@ async function subscribeToPush(
             base64ToUint8Array(
               publicKey
             ),
-        }
-      );
+        });
   }
 
   const saved =
@@ -629,18 +666,25 @@ async function subscribeToPush(
   return subscription;
 }
 
+
 async function unsubscribeFromPush() {
+
   if (
     !currentPushSubscription
   ) {
+
     const registration =
-      await navigator.serviceWorker.getRegistration(
-        "/"
-      );
+      await navigator
+        .serviceWorker
+        .getRegistration("/");
 
     if (registration) {
+
       currentPushSubscription =
-        await registration.pushManager.getSubscription();
+        await registration
+          .pushManager
+          .getSubscription();
+
     }
   }
 
@@ -651,7 +695,8 @@ async function unsubscribeFromPush() {
   }
 
   const endpoint =
-    currentPushSubscription.endpoint;
+    currentPushSubscription
+      .endpoint;
 
   await fetchJSON(
     "/api/push/unsubscribe",
@@ -669,15 +714,45 @@ async function unsubscribeFromPush() {
     }
   );
 
-  await currentPushSubscription.unsubscribe();
+  await currentPushSubscription
+    .unsubscribe();
 
   currentPushSubscription =
     null;
 
-  console.log(
-    "🔕 Push subscription disabled"
+}
+
+
+async function updateNotificationPreferences(
+  preferences
+) {
+  if (
+    !currentPushSubscription
+  ) {
+    return;
+  }
+
+  await fetchJSON(
+    "/api/push/preferences",
+    {
+      method: "PATCH",
+
+      headers: {
+        "Content-Type":
+          "application/json",
+      },
+
+      body: JSON.stringify({
+        endpoint:
+          currentPushSubscription
+            .endpoint,
+
+        preferences,
+      }),
+    }
   );
 }
+
 
 function setupPushUI(
   registration
@@ -694,7 +769,9 @@ function setupPushUI(
   button.addEventListener(
     "click",
     async () => {
+
       try {
+
         button.disabled =
           true;
 
@@ -705,10 +782,24 @@ function setupPushUI(
           registration
         );
 
+        await updateNotificationPreferences(
+          {
+            breakingNews:
+              true,
+
+            trendingNews:
+              true,
+
+            frequencyLimit:
+              10,
+          }
+        );
+
         button.textContent =
           "Notifications ON";
 
       } catch (error) {
+
         console.error(
           "Push setup error:",
           error
@@ -722,14 +813,18 @@ function setupPushUI(
         );
 
       } finally {
+
         button.disabled =
           false;
+
       }
     }
   );
 }
 
+
 async function setupPushNotifications() {
+
   const registration =
     await registerServiceWorker();
 
@@ -742,7 +837,9 @@ async function setupPushNotifications() {
   );
 }
 
+
 function setupMobileMenu() {
+
   const button =
     document.querySelector(
       "#menuToggle"
@@ -763,14 +860,18 @@ function setupMobileMenu() {
   button.addEventListener(
     "click",
     () => {
+
       nav.classList.toggle(
         "open"
       );
+
     }
   );
 }
 
+
 function setupSearch() {
+
   const form =
     document.querySelector(
       "#searchForm"
@@ -791,16 +892,20 @@ function setupSearch() {
   form.addEventListener(
     "submit",
     (event) => {
+
       event.preventDefault();
 
       searchNews(
         input.value
       );
+
     }
   );
 }
 
+
 async function initializeApp() {
+
   setupMobileMenu();
 
   setupSearch();
@@ -814,6 +919,7 @@ async function initializeApp() {
 
   setupPushNotifications();
 }
+
 
 document.addEventListener(
   "DOMContentLoaded",
