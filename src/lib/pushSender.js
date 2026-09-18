@@ -1,4 +1,5 @@
 import webpush, {
+  configureWebPush,
   getVapidPublicKey,
 } from "./pushConfig.js";
 
@@ -6,6 +7,7 @@ import {
   getActivePushSubscriptions,
   markPushNotified,
 } from "./pushSubscriptions.js";
+
 
 function normalizeValue(
   value,
@@ -15,6 +17,27 @@ function normalizeValue(
     value ?? fallback
   ).trim();
 }
+
+
+function normalizeFrequency(
+  value
+) {
+  const number =
+    Number(value);
+
+  if (
+    !Number.isInteger(number) ||
+    number < 1
+  ) {
+    return 10;
+  }
+
+  return Math.min(
+    number,
+    50
+  );
+}
+
 
 function buildPayload(
   notification = {}
@@ -53,31 +76,18 @@ function buildPayload(
     timestamp:
       Date.now(),
 
+    tag:
+      notification.tag ||
+      "zeeshan-news",
+
     data: {
       url,
     },
   });
 }
 
-function isBreakingAllowed(
-  subscription
-) {
-  return (
-    subscription.breaking_news ===
-    true
-  );
-}
 
-function isTrendingAllowed(
-  subscription
-) {
-  return (
-    subscription.trending_news ===
-    true
-  );
-}
-
-function shouldSend(
+function isNotificationAllowed(
   subscription,
   type
 ) {
@@ -89,24 +99,71 @@ function shouldSend(
 
   if (
     type === "breaking" &&
-    !isBreakingAllowed(
-      subscription
-    )
+    subscription.breaking_news !== true
   ) {
     return false;
   }
 
   if (
     type === "trending" &&
-    !isTrendingAllowed(
-      subscription
-    )
+    subscription.trending_news !== true
   ) {
     return false;
   }
 
   return true;
 }
+
+
+function isFrequencyAllowed(
+  subscription
+) {
+  const frequencyLimit =
+    normalizeFrequency(
+      subscription.frequency_limit
+    );
+
+  if (
+    !subscription.last_notified_at
+  ) {
+    return true;
+  }
+
+  const lastNotified =
+    new Date(
+      subscription.last_notified_at
+    );
+
+  if (
+    Number.isNaN(
+      lastNotified.getTime()
+    )
+  ) {
+    return true;
+  }
+
+  /*
+   * frequency_limit means
+   * maximum notifications per hour.
+   *
+   * This prevents accidental
+   * notification spam.
+   */
+
+  const minimumInterval =
+    60 * 60 * 1000 /
+    frequencyLimit;
+
+  const elapsed =
+    Date.now() -
+    lastNotified.getTime();
+
+  return (
+    elapsed >=
+    minimumInterval
+  );
+}
+
 
 export async function sendPushNotification(
   db,
@@ -118,6 +175,14 @@ export async function sendPushNotification(
       "Database connection is required"
     );
   }
+
+  /*
+   * Configure web-push
+   * only when an actual
+   * notification is being sent.
+   */
+
+  configureWebPush();
 
   const publicKey =
     getVapidPublicKey();
@@ -150,6 +215,8 @@ export async function sendPushNotification(
 
     skipped: 0,
 
+    frequencyLimited: 0,
+
     removed: 0,
 
     failed: 0,
@@ -157,11 +224,13 @@ export async function sendPushNotification(
     errors: [],
   };
 
+
   for (
     const subscription of subscriptions
   ) {
+
     if (
-      !shouldSend(
+      !isNotificationAllowed(
         subscription,
         type
       )
@@ -170,6 +239,18 @@ export async function sendPushNotification(
 
       continue;
     }
+
+
+    if (
+      !isFrequencyAllowed(
+        subscription
+      )
+    ) {
+      report.frequencyLimited++;
+
+      continue;
+    }
+
 
     const pushSubscription = {
       endpoint:
@@ -184,26 +265,34 @@ export async function sendPushNotification(
       },
     };
 
+
     try {
+
       await webpush.sendNotification(
         pushSubscription,
         payload
       );
+
 
       await markPushNotified(
         db,
         subscription.id
       );
 
+
       report.sent++;
 
+
     } catch (error) {
+
       report.failed++;
+
 
       const statusCode =
         Number(
           error?.statusCode
         );
+
 
       const errorMessage =
         normalizeValue(
@@ -214,11 +303,20 @@ export async function sendPushNotification(
           500
         );
 
+
+      /*
+       * Browser push subscriptions
+       * returning 404/410 are normally
+       * no longer valid.
+       */
+
       if (
         statusCode === 404 ||
         statusCode === 410
       ) {
+
         try {
+
           await db.query(
             `
             UPDATE push_subscriptions
@@ -226,18 +324,22 @@ export async function sendPushNotification(
               enabled = FALSE,
               updated_at =
                 CURRENT_TIMESTAMP
-            WHERE id = $1
+            WHERE
+              id = $1
             `,
             [
               subscription.id,
             ]
           );
 
+
           report.removed++;
+
 
         } catch (
           cleanupError
         ) {
+
           report.errors.push({
             id:
               subscription.id,
@@ -245,8 +347,12 @@ export async function sendPushNotification(
             error:
               cleanupError.message,
           });
+
         }
+
+
       } else {
+
         report.errors.push({
           id:
             subscription.id,
@@ -254,12 +360,15 @@ export async function sendPushNotification(
           error:
             errorMessage,
         });
+
       }
     }
   }
 
+
   return report;
 }
+
 
 export async function sendBreakingNewsNotification(
   db,
@@ -273,10 +382,13 @@ export async function sendBreakingNewsNotification(
       title,
       body,
       url,
+      tag:
+        "zeeshan-breaking-news",
     },
     "breaking"
   );
 }
+
 
 export async function sendTrendingNewsNotification(
   db,
@@ -290,6 +402,8 @@ export async function sendTrendingNewsNotification(
       title,
       body,
       url,
+      tag:
+        "zeeshan-trending-news",
     },
     "trending"
   );
