@@ -27,6 +27,8 @@ import sourceHealthRoutes from "./src/routes/sourceHealthRoutes.js";
 
 import automationHistoryRoutes from "./src/routes/automationHistoryRoutes.js";
 
+import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
+
 dotenv.config();
 
 const {
@@ -217,6 +219,11 @@ app.use(
 app.use(
   "/api/automation-history",
   automationHistoryRoutes
+);
+
+app.use(
+  "/api/source-policy",
+  sourcePolicyRoutes
 );
 
 app.get(
@@ -451,6 +458,10 @@ async function startServer() {
 
         console.log(
           "📊 Automation History: Enabled"
+        );
+
+        console.log(
+          "📜 Source Policy: Enabled"
         );
 
         console.log(
