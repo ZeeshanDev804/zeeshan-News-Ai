@@ -1,24 +1,69 @@
-// ========================================
-// ZEESHAN NEWS AI — WEB PUSH CONFIG
-// ========================================
+import webpush from "web-push";
 
-import {
-  isWebPushConfigured,
-  getPublicVapidKey,
-} from "./notificationService.js";
+function getRequiredEnv(
+  name
+) {
+  const value =
+    process.env[name];
 
+  if (
+    !value ||
+    !String(value).trim()
+  ) {
+    throw new Error(
+      `${name} is not configured`
+    );
+  }
 
-// ========================================
-// GET WEB PUSH CONFIGURATION
-// ========================================
+  return String(value).trim();
+}
 
-export function getWebPushConfig() {
+export function isPushConfigured() {
+  return Boolean(
+    process.env.VAPID_PUBLIC_KEY &&
+    process.env.VAPID_PRIVATE_KEY &&
+    process.env.VAPID_SUBJECT
+  );
+}
+
+export function configureWebPush() {
+  const publicKey =
+    getRequiredEnv(
+      "VAPID_PUBLIC_KEY"
+    );
+
+  const privateKey =
+    getRequiredEnv(
+      "VAPID_PRIVATE_KEY"
+    );
+
+  const subject =
+    getRequiredEnv(
+      "VAPID_SUBJECT"
+    );
+
+  webpush.setVapidDetails(
+    subject,
+    publicKey,
+    privateKey
+  );
+
+  return {
+    configured: true,
+    subject,
+  };
+}
+
+export function getVapidPublicKey() {
+  return getRequiredEnv(
+    "VAPID_PUBLIC_KEY"
+  );
+}
+
+export function getPushStatus() {
   return {
     configured:
-      isWebPushConfigured(),
-
-    publicKey:
-      getPublicVapidKey(),
+      isPushConfigured(),
 
     subject:
       process.env.VAPID_SUBJECT ||
@@ -26,29 +71,4 @@ export function getWebPushConfig() {
   };
 }
 
-
-// ========================================
-// REQUIRE WEB PUSH CONFIGURATION
-// ========================================
-
-export function requireWebPushConfig() {
-  const configured =
-    isWebPushConfigured();
-
-  if (!configured) {
-    throw new Error(
-      "Web Push is not configured. VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT are required."
-    );
-  }
-
-  return {
-    publicKey:
-      process.env.VAPID_PUBLIC_KEY,
-
-    privateKey:
-      process.env.VAPID_PRIVATE_KEY,
-
-    subject:
-      process.env.VAPID_SUBJECT,
-  };
-      }
+export default webpush;
