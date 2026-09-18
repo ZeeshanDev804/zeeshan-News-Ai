@@ -31,6 +31,8 @@ import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
 
 import pushRoutes from "./src/routes/pushRoutes.js";
 
+import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
+
 dotenv.config();
 
 const {
@@ -231,6 +233,11 @@ app.use(
 app.use(
   "/api/push",
   pushRoutes
+);
+
+app.use(
+  "/api/push-admin",
+  pushAdminRoutes
 );
 
 app.get(
@@ -473,6 +480,10 @@ async function startServer() {
 
         console.log(
           "🔔 Push Notifications: Enabled"
+        );
+
+        console.log(
+          "👑 Push Admin: Enabled"
         );
 
         console.log(
