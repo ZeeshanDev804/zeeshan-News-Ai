@@ -7,6 +7,10 @@ import {
   recordSourceFailure,
 } from "./sourceHealth.js";
 
+import {
+  withRetry,
+} from "./retryEngine.js";
+
 const parser = new Parser({
   timeout: 15000,
 
@@ -54,6 +58,43 @@ function getPublishedDate(item) {
     : date;
 }
 
+async function fetchFeedWithRetry(
+  source
+) {
+  const result =
+    await withRetry(
+      async () => {
+        return parser.parseURL(
+          source.url
+        );
+      },
+      {
+        maxAttempts: 3,
+
+        baseDelayMs: 1000,
+
+        maxDelayMs: 10000,
+
+        label:
+          `RSS ${source.name}`,
+      }
+    );
+
+  if (!result.success) {
+    throw new Error(
+      result.error ||
+        `Failed to fetch ${source.name}`
+    );
+  }
+
+  return {
+    feed: result.result,
+
+    attempts:
+      result.attempts,
+  };
+}
+
 export async function runRssEngine(db) {
   console.log(
     "🚀 ZEESHAN NEWS AI — RSS ENGINE STARTED"
@@ -74,6 +115,8 @@ export async function runRssEngine(db) {
 
     failedSources: 0,
 
+    retriedSources: 0,
+
     sourceHealth: [],
   };
 
@@ -83,10 +126,21 @@ export async function runRssEngine(db) {
     );
 
     try {
-      const feed =
-        await parser.parseURL(
-          source.url
+      const {
+        feed,
+        attempts,
+      } =
+        await fetchFeedWithRetry(
+          source
         );
+
+      if (attempts > 1) {
+        report.retriedSources++;
+
+        console.log(
+          `🔁 ${source.name} succeeded after ${attempts} attempts`
+        );
+      }
 
       report.sources++;
 
@@ -193,13 +247,18 @@ export async function runRssEngine(db) {
         );
 
       report.sourceHealth.push({
-        source: source.name,
+        source:
+          source.name,
+
         status:
           health.status,
+
         successCount:
           health.success_count,
+
         failureCount:
           health.failure_count,
+
         consecutiveFailures:
           health.consecutive_failures,
       });
@@ -212,7 +271,7 @@ export async function runRssEngine(db) {
       report.failedSources++;
 
       console.error(
-        `❌ ${source.name} failed:`,
+        `❌ ${source.name} failed after retries:`,
         error.message
       );
 
@@ -226,13 +285,18 @@ export async function runRssEngine(db) {
           );
 
         report.sourceHealth.push({
-          source: source.name,
+          source:
+            source.name,
+
           status:
             health.status,
+
           successCount:
             health.success_count,
+
           failureCount:
             health.failure_count,
+
           consecutiveFailures:
             health.consecutive_failures,
         });
@@ -246,6 +310,12 @@ export async function runRssEngine(db) {
         );
       }
     }
+  }
+
+  if (
+    report.failedSources > 0
+  ) {
+    report.success = false;
   }
 
   console.log(
