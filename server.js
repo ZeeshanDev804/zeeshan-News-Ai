@@ -23,6 +23,8 @@ import {
 
 import takedownRoutes from "./src/routes/takedownRoutes.js";
 
+import sourceHealthRoutes from "./src/routes/sourceHealthRoutes.js";
+
 dotenv.config();
 
 const {
@@ -34,30 +36,15 @@ const app = express();
 const PORT =
   process.env.PORT || 3000;
 
-
-// ========================================
-// MIDDLEWARE
-// ========================================
-
 app.use(
   express.json({
     limit: "1mb",
   })
 );
 
-
-// ========================================
-// STATIC WEBSITE
-// ========================================
-
 app.use(
   express.static("public")
 );
-
-
-// ========================================
-// DATABASE CONFIGURATION
-// ========================================
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -82,11 +69,6 @@ const pool = new Pool({
     10000,
 });
 
-
-// ========================================
-// DATABASE ERROR HANDLER
-// ========================================
-
 pool.on(
   "error",
   (error) => {
@@ -97,17 +79,7 @@ pool.on(
   }
 );
 
-
-// ========================================
-// APP DATABASE ACCESS
-// ========================================
-
 app.locals.db = pool;
-
-
-// ========================================
-// PREPARE DATABASE
-// ========================================
 
 async function prepareDatabase() {
   await pool.query(
@@ -154,11 +126,6 @@ async function prepareDatabase() {
   );
 }
 
-
-// ========================================
-// HOME
-// ========================================
-
 app.get(
   "/",
   (req, res) => {
@@ -170,11 +137,6 @@ app.get(
     );
   }
 );
-
-
-// ========================================
-// HEALTH CHECK
-// ========================================
 
 app.get(
   "/health",
@@ -208,11 +170,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// DATABASE STATUS
-// ========================================
-
 app.get(
   "/api/database",
   async (req, res) => {
@@ -240,30 +197,20 @@ app.get(
   }
 );
 
-
-// ========================================
-// NEWS API
-// ========================================
-
 app.use(
   "/api/news",
   newsRoutes
 );
-
-
-// ========================================
-// TAKEDOWN / COPYRIGHT API
-// ========================================
 
 app.use(
   "/api/takedown",
   takedownRoutes
 );
 
-
-// ========================================
-// MANUAL RSS RUN
-// ========================================
+app.use(
+  "/api/source-health",
+  sourceHealthRoutes
+);
 
 app.get(
   "/api/rss/run",
@@ -292,11 +239,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// MANUAL AUTOMATION RUN
-// ========================================
-
 app.get(
   "/api/automation/run",
   async (req, res) => {
@@ -322,11 +264,6 @@ app.get(
     }
   }
 );
-
-
-// ========================================
-// SECURE VERCEL CRON
-// ========================================
 
 app.get(
   "/api/automation/cron",
@@ -375,11 +312,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// AUTOMATION STATUS
-// ========================================
-
 app.get(
   "/api/automation/status",
   (req, res) => {
@@ -391,11 +323,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// SCHEDULER STATUS
-// ========================================
-
 app.get(
   "/api/scheduler/status",
   (req, res) => {
@@ -406,11 +333,6 @@ app.get(
     });
   }
 );
-
-
-// ========================================
-// STOP SCHEDULER
-// ========================================
 
 app.get(
   "/api/scheduler/stop",
@@ -425,11 +347,6 @@ app.get(
   }
 );
 
-
-// ========================================
-// 404 HANDLER
-// ========================================
-
 app.use(
   (req, res) => {
     res.status(404).json({
@@ -439,11 +356,6 @@ app.use(
     });
   }
 );
-
-
-// ========================================
-// GRACEFUL SHUTDOWN
-// ========================================
 
 async function shutdown(
   signal
@@ -482,11 +394,6 @@ process.on(
   "SIGINT",
   () => shutdown("SIGINT")
 );
-
-
-// ========================================
-// START SERVER
-// ========================================
 
 async function startServer() {
   try {
@@ -529,6 +436,10 @@ async function startServer() {
 
         console.log(
           "🚨 Takedown System: Enabled"
+        );
+
+        console.log(
+          "📡 Source Health: Enabled"
         );
 
         console.log(
