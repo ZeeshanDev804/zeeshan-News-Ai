@@ -11,28 +11,37 @@ import {
   withRetry,
 } from "./retryEngine.js";
 
+import {
+  getSourcePolicy,
+  isSourceAllowed,
+} from "./sourcePolicy.js";
+
 const parser = new Parser({
   timeout: 15000,
 
   headers: {
-    "User-Agent": "ZEESHAN-News-AI/1.0",
+    "User-Agent":
+      "ZEESHAN-News-AI/1.0",
   },
 });
 
 const RSS_SOURCES = [
   {
     name: "BBC",
-    url: "https://feeds.bbci.co.uk/news/world/rss.xml",
+    url:
+      "https://feeds.bbci.co.uk/news/world/rss.xml",
   },
 
   {
     name: "Al Jazeera",
-    url: "https://www.aljazeera.com/xml/rss/all.xml",
+    url:
+      "https://www.aljazeera.com/xml/rss/all.xml",
   },
 
   {
     name: "Dawn",
-    url: "https://www.dawn.com/arcio/rss",
+    url:
+      "https://www.dawn.com/arcio/rss",
   },
 ];
 
@@ -95,7 +104,9 @@ async function fetchFeedWithRetry(
   };
 }
 
-export async function runRssEngine(db) {
+export async function runRssEngine(
+  db
+) {
   console.log(
     "🚀 ZEESHAN NEWS AI — RSS ENGINE STARTED"
   );
@@ -117,15 +128,81 @@ export async function runRssEngine(db) {
 
     retriedSources: 0,
 
+    policyBlockedSources: 0,
+
     sourceHealth: [],
+
+    sourcePolicies: [],
   };
 
-  for (const source of RSS_SOURCES) {
+  for (
+    const source of RSS_SOURCES
+  ) {
     console.log(
-      `📰 Fetching: ${source.name}`
+      `📰 Checking source policy: ${source.name}`
     );
 
     try {
+      const policy =
+        await getSourcePolicy(
+          db,
+          source.name
+        );
+
+      report.sourcePolicies.push({
+        source:
+          source.name,
+
+        enabled:
+          policy.enabled,
+
+        attributionRequired:
+          policy.attributionRequired,
+
+        allowAiSummary:
+          policy.allowAiSummary,
+
+        copyrightRisk:
+          policy.copyrightRisk,
+
+        autoHoldOnComplaint:
+          policy.autoHoldOnComplaint,
+      });
+
+      if (
+        policy.enabled !== true
+      ) {
+        report.policyBlockedSources++;
+
+        console.warn(
+          `⛔ Source disabled by policy: ${source.name}`
+        );
+
+        continue;
+      }
+
+      const permission =
+        await isSourceAllowed(
+          db,
+          source.name
+        );
+
+      if (
+        permission.allowed !== true
+      ) {
+        report.policyBlockedSources++;
+
+        console.warn(
+          `⛔ Source blocked: ${source.name}`
+        );
+
+        continue;
+      }
+
+      console.log(
+        `📰 Fetching: ${source.name}`
+      );
+
       const {
         feed,
         attempts,
@@ -195,6 +272,21 @@ export async function runRssEngine(db) {
           continue;
         }
 
+        const sourceAttribution =
+          `${source.name} — Original source: ${item.link.trim()}`;
+
+        const copyrightStatus =
+          policy.allowAiSummary === true
+            ? "pending"
+            : "review_required";
+
+        const copyrightRisk =
+          policy.copyrightRisk ||
+          "medium";
+
+        const legalReviewRequired =
+          policy.allowAiSummary !== true;
+
         const result =
           await db.query(
             `
@@ -204,7 +296,11 @@ export async function runRssEngine(db) {
                 link,
                 content,
                 source,
-                published_at
+                published_at,
+                source_attribution,
+                copyright_status,
+                copyright_risk,
+                legal_review_required
               )
             VALUES
               (
@@ -212,7 +308,11 @@ export async function runRssEngine(db) {
                 $2,
                 $3,
                 $4,
-                $5
+                $5,
+                $6,
+                $7,
+                $8,
+                $9
               )
             ON CONFLICT (link)
             DO NOTHING
@@ -227,6 +327,14 @@ export async function runRssEngine(db) {
               source.name,
 
               publishedAt,
+
+              sourceAttribution,
+
+              copyrightStatus,
+
+              copyrightRisk,
+
+              legalReviewRequired,
             ]
           );
 
@@ -322,7 +430,9 @@ export async function runRssEngine(db) {
     "🏁 RSS ENGINE FINISHED"
   );
 
-  console.log(report);
+  console.log(
+    report
+  );
 
   return report;
 }
