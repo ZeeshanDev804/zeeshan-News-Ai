@@ -29,6 +29,8 @@ import automationHistoryRoutes from "./src/routes/automationHistoryRoutes.js";
 
 import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
 
+import pushRoutes from "./src/routes/pushRoutes.js";
+
 dotenv.config();
 
 const {
@@ -224,6 +226,11 @@ app.use(
 app.use(
   "/api/source-policy",
   sourcePolicyRoutes
+);
+
+app.use(
+  "/api/push",
+  pushRoutes
 );
 
 app.get(
@@ -462,6 +469,10 @@ async function startServer() {
 
         console.log(
           "📜 Source Policy: Enabled"
+        );
+
+        console.log(
+          "🔔 Push Notifications: Enabled"
         );
 
         console.log(
