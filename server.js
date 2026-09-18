@@ -1,22 +1,10 @@
-// ========================================
-// ZEESHAN NEWS AI — MAIN SERVER
-// ========================================
-
 import express from "express";
 import dotenv from "dotenv";
 import pg from "pg";
 
-import {
-  runRssEngine,
-} from "./src/lib/rssEngine.js";
+import { runRssEngine } from "./src/lib/rssEngine.js";
 
 import newsRoutes from "./src/routes/newsRoutes.js";
-
-import legalRoutes from "./src/routes/legalRoutes.js";
-
-import adminRoutes from "./src/routes/adminRoutes.js";
-
-import notificationRoutes from "./src/routes/notificationRoutes.js";
 
 import {
   runNewsAutomation,
@@ -33,14 +21,23 @@ import {
   getSchedulerStatus,
 } from "./src/lib/scheduler.js";
 
+import takedownRoutes from "./src/routes/takedownRoutes.js";
+
 dotenv.config();
+
+const {
+  Pool,
+} = pg;
 
 const app = express();
 
 const PORT =
-  Number(
-    process.env.PORT || 3000
-  );
+  process.env.PORT || 3000;
+
+
+// ========================================
+// MIDDLEWARE
+// ========================================
 
 app.use(
   express.json({
@@ -48,64 +45,71 @@ app.use(
   })
 );
 
+
+// ========================================
+// STATIC WEBSITE
+// ========================================
+
 app.use(
-  express.static(
-    "public"
-  )
+  express.static("public")
 );
 
-const DATABASE_URL =
-  process.env.DATABASE_URL;
 
-if (!DATABASE_URL) {
+// ========================================
+// DATABASE CONFIGURATION
+// ========================================
+
+if (!process.env.DATABASE_URL) {
   console.error(
     "❌ DATABASE_URL is not configured"
   );
-
-  process.exit(1);
 }
 
-const {
-  Pool,
-} = pg;
+const pool = new Pool({
+  connectionString:
+    process.env.DATABASE_URL,
 
-const pool =
-  new Pool({
-    connectionString:
-      DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 
-    ssl: {
-      rejectUnauthorized:
-        false,
-    },
+  max: 10,
 
-    max: 10,
+  idleTimeoutMillis:
+    30000,
 
-    idleTimeoutMillis:
-      30000,
+  connectionTimeoutMillis:
+    10000,
+});
 
-    connectionTimeoutMillis:
-      10000,
-  });
 
-app.locals.db =
-  pool;
+// ========================================
+// DATABASE ERROR HANDLER
+// ========================================
 
 pool.on(
   "error",
   (error) => {
     console.error(
-      "❌ Unexpected database pool error:",
+      "❌ Unexpected PostgreSQL error:",
       error.message
     );
   }
 );
 
-async function prepareDatabase() {
-  console.log(
-    "🗄️ Preparing database..."
-  );
 
+// ========================================
+// APP DATABASE ACCESS
+// ========================================
+
+app.locals.db = pool;
+
+
+// ========================================
+// PREPARE DATABASE
+// ========================================
+
+async function prepareDatabase() {
   await pool.query(
     `
     ALTER TABLE articles
@@ -150,6 +154,11 @@ async function prepareDatabase() {
   );
 }
 
+
+// ========================================
+// HOME
+// ========================================
+
 app.get(
   "/",
   (req, res) => {
@@ -162,6 +171,11 @@ app.get(
   }
 );
 
+
+// ========================================
+// HEALTH CHECK
+// ========================================
+
 app.get(
   "/health",
   async (req, res) => {
@@ -170,72 +184,23 @@ app.get(
         "SELECT 1"
       );
 
-      return res.json({
+      res.json({
         success: true,
-
-        status:
-          "healthy",
-
+        status: "healthy",
+        service:
+          "ZEESHAN NEWS AI",
         database:
           "connected",
-
         timestamp:
-          new Date(),
+          new Date().toISOString(),
       });
+
     } catch (error) {
-      console.error(
-        "❌ Health check error:",
-        error.message
-      );
-
-      return res.status(500).json({
+      res.status(503).json({
         success: false,
-
-        status:
-          "unhealthy",
-
+        status: "unhealthy",
         database:
-          "error",
-
-        timestamp:
-          new Date(),
-      });
-    }
-  }
-);
-
-app.get(
-  "/api/database",
-  async (req, res) => {
-    try {
-      const result =
-        await pool.query(
-          "SELECT 1 AS connected"
-        );
-
-      return res.json({
-        success: true,
-
-        database:
-          result.rows.length > 0
-            ? "connected"
-            : "unknown",
-
-        timestamp:
-          new Date(),
-      });
-    } catch (error) {
-      console.error(
-        "❌ Database status error:",
-        error.message
-      );
-
-      return res.status(500).json({
-        success: false,
-
-        database:
-          "error",
-
+          "disconnected",
         error:
           error.message,
       });
@@ -243,55 +208,94 @@ app.get(
   }
 );
 
+
+// ========================================
+// DATABASE STATUS
+// ========================================
+
+app.get(
+  "/api/database",
+  async (req, res) => {
+    try {
+      const result =
+        await pool.query(
+          "SELECT NOW() AS now"
+        );
+
+      res.json({
+        success: true,
+        connected: true,
+        databaseTime:
+          result.rows[0].now,
+      });
+
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        connected: false,
+        error:
+          error.message,
+      });
+    }
+  }
+);
+
+
+// ========================================
+// NEWS API
+// ========================================
+
 app.use(
   "/api/news",
   newsRoutes
 );
 
-app.use(
-  "/api/legal",
-  legalRoutes
-);
+
+// ========================================
+// TAKEDOWN / COPYRIGHT API
+// ========================================
 
 app.use(
-  "/api/admin",
-  adminRoutes
+  "/api/takedown",
+  takedownRoutes
 );
 
-app.use(
-  "/api/notifications",
-  notificationRoutes
-);
+
+// ========================================
+// MANUAL RSS RUN
+// ========================================
 
 app.get(
   "/api/rss/run",
   async (req, res) => {
     try {
       const report =
-        await runRssEngine(
-          pool
-        );
+        await runRssEngine(pool);
 
-      return res.json({
+      res.json({
         success: true,
-
         report,
       });
+
     } catch (error) {
       console.error(
-        "❌ RSS run error:",
+        "❌ RSS run failed:",
         error.message
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
-
         error:
-          "RSS engine failed",
+          error.message,
       });
     }
   }
 );
+
+
+// ========================================
+// MANUAL AUTOMATION RUN
+// ========================================
 
 app.get(
   "/api/automation/run",
@@ -302,173 +306,144 @@ app.get(
           pool
         );
 
-      return res.json({
-        success:
-          Boolean(
-            report?.success
-          ),
+      res.json(report);
 
-        report,
-      });
     } catch (error) {
       console.error(
-        "❌ Automation run error:",
+        "❌ Automation run failed:",
         error.message
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
-
         error:
-          "News automation failed",
+          error.message,
       });
     }
   }
 );
 
+
+// ========================================
+// SECURE VERCEL CRON
+// ========================================
+
 app.get(
   "/api/automation/cron",
   async (req, res) => {
-    const verification =
-      verifyCronRequest(
-        req
-      );
-
-    if (
-      !verification.valid
-    ) {
-      console.warn(
-        "⚠️ Unauthorized cron request"
-      );
-
-      return res.status(401).json({
-        success: false,
-
-        error:
-          "Unauthorized cron request",
-      });
-    }
-
     try {
+      const verification =
+        verifyCronRequest(req);
+
+      if (!verification.valid) {
+        console.warn(
+          "⚠️ Unauthorized cron request:",
+          verification.reason
+        );
+
+        return res.status(401).json({
+          success: false,
+          error:
+            "Unauthorized cron request",
+        });
+      }
+
       const report =
         await runNewsAutomation(
           pool
         );
 
-      return res.json({
+      res.json({
         success:
-          Boolean(
-            report?.success
-          ),
-
+          report?.success ?? false,
+        cron: true,
         report,
       });
+
     } catch (error) {
       console.error(
-        "❌ Cron automation error:",
+        "❌ Secure cron failed:",
         error.message
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
-
         error:
-          "Cron automation failed",
+          error.message,
       });
     }
   }
 );
+
+
+// ========================================
+// AUTOMATION STATUS
+// ========================================
 
 app.get(
   "/api/automation/status",
   (req, res) => {
-    try {
-      return res.json({
-        success: true,
-
-        status:
-          getAutomationStatus(),
-      });
-    } catch (error) {
-      console.error(
-        "❌ Automation status error:",
-        error.message
-      );
-
-      return res.status(500).json({
-        success: false,
-
-        error:
-          "Failed to load automation status",
-      });
-    }
+    res.json({
+      success: true,
+      status:
+        getAutomationStatus(),
+    });
   }
 );
+
+
+// ========================================
+// SCHEDULER STATUS
+// ========================================
 
 app.get(
   "/api/scheduler/status",
   (req, res) => {
-    try {
-      return res.json({
-        success: true,
-
-        scheduler:
-          getSchedulerStatus(),
-      });
-    } catch (error) {
-      console.error(
-        "❌ Scheduler status error:",
-        error.message
-      );
-
-      return res.status(500).json({
-        success: false,
-
-        error:
-          "Failed to load scheduler status",
-      });
-    }
+    res.json({
+      success: true,
+      status:
+        getSchedulerStatus(),
+    });
   }
 );
+
+
+// ========================================
+// STOP SCHEDULER
+// ========================================
 
 app.get(
   "/api/scheduler/stop",
   (req, res) => {
-    try {
-      const result =
-        stopScheduler();
+    const result =
+      stopScheduler();
 
-      return res.json({
-        success: true,
-
-        result,
-      });
-    } catch (error) {
-      console.error(
-        "❌ Scheduler stop error:",
-        error.message
-      );
-
-      return res.status(500).json({
-        success: false,
-
-        error:
-          "Failed to stop scheduler",
-      });
-    }
+    res.json({
+      success: true,
+      result,
+    });
   }
 );
+
+
+// ========================================
+// 404 HANDLER
+// ========================================
 
 app.use(
   (req, res) => {
     res.status(404).json({
       success: false,
-
       error:
         "Route not found",
     });
   }
 );
+
+
+// ========================================
+// GRACEFUL SHUTDOWN
+// ========================================
 
 async function shutdown(
   signal
@@ -487,6 +462,7 @@ async function shutdown(
     );
 
     process.exit(0);
+
   } catch (error) {
     console.error(
       "❌ Shutdown error:",
@@ -499,21 +475,18 @@ async function shutdown(
 
 process.on(
   "SIGTERM",
-  () => {
-    shutdown(
-      "SIGTERM"
-    );
-  }
+  () => shutdown("SIGTERM")
 );
 
 process.on(
   "SIGINT",
-  () => {
-    shutdown(
-      "SIGINT"
-    );
-  }
+  () => shutdown("SIGINT")
 );
+
+
+// ========================================
+// START SERVER
+// ========================================
 
 async function startServer() {
   try {
@@ -527,35 +500,23 @@ async function startServer() {
         );
 
         console.log(
-          "🚀 ZEESHAN NEWS AI"
+          "🚀 ZEESHAN NEWS AI SERVER"
         );
 
         console.log(
-          `🌐 Server running on port ${PORT}`
+          `🌐 Port: ${PORT}`
         );
 
         console.log(
-          "📰 News Engine: Enabled"
+          "🗄️ Database: Connected"
         );
 
         console.log(
-          "🤖 AI Engine: Enabled"
+          "🤖 Automation: Enabled"
         );
 
         console.log(
-          "⚖️ Copyright Protection: Enabled"
-        );
-
-        console.log(
-          "📋 Legal Review System: Enabled"
-        );
-
-        console.log(
-          "🔐 Admin Authentication: Enabled"
-        );
-
-        console.log(
-          "🔔 Web Push Notifications: Enabled"
+          "⏰ Scheduler: Enabled"
         );
 
         console.log(
@@ -563,25 +524,28 @@ async function startServer() {
         );
 
         console.log(
-          "⏰ Scheduler: Starting"
+          "⚖️ Copyright Protection: Enabled"
+        );
+
+        console.log(
+          "🚨 Takedown System: Enabled"
         );
 
         console.log(
           "================================="
         );
-
-        startScheduler(
-          pool
-        );
       }
     );
+
+    startScheduler(
+      pool
+    );
+
   } catch (error) {
     console.error(
       "❌ Server startup failed:",
       error.message
     );
-
-    await pool.end();
 
     process.exit(1);
   }
