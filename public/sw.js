@@ -1,27 +1,20 @@
-// ========================================
-// ZEESHAN NEWS AI — PUSH SERVICE WORKER
-// ========================================
-
 self.addEventListener(
   "push",
   (event) => {
     let data = {};
 
     try {
-      data =
-        event.data
-          ? event.data.json()
-          : {};
-    } catch {
+      data = event.data
+        ? event.data.json()
+        : {};
+    } catch (error) {
       data = {
         title:
           "ZEESHAN NEWS AI",
-
         body:
           event.data
             ? event.data.text()
-            : "New news is available.",
-
+            : "New news update is available.",
         url: "/",
       };
     }
@@ -30,34 +23,41 @@ self.addEventListener(
       data.title ||
       "ZEESHAN NEWS AI";
 
-    const body =
-      data.body ||
-      "New news is available.";
-
-    const url =
-      data.url ||
-      "/";
-
     const options = {
-      body,
+      body:
+        data.body ||
+        "New news update is available.",
 
       icon:
+        data.icon ||
         "/icon-192.png",
 
       badge:
+        data.badge ||
         "/icon-192.png",
 
+      timestamp:
+        data.timestamp ||
+        Date.now(),
+
       data: {
-        url,
+        url:
+          data?.data?.url ||
+          data.url ||
+          "/",
       },
 
+      vibrate: [
+        200,
+        100,
+        200,
+      ],
+
       tag:
-        data.type ||
+        data.tag ||
         "zeeshan-news",
 
-      renotify: false,
-
-      requireInteraction: false,
+      renotify: true,
     };
 
     event.waitUntil(
@@ -69,11 +69,6 @@ self.addEventListener(
   }
 );
 
-
-// ========================================
-// NOTIFICATION CLICK
-// ========================================
-
 self.addEventListener(
   "notificationclick",
   (event) => {
@@ -84,83 +79,37 @@ self.addEventListener(
       "/";
 
     event.waitUntil(
-      openNotificationUrl(
-        targetUrl
-      )
+      clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      }).then((clientList) => {
+        for (
+          const client of clientList
+        ) {
+          if (
+            "focus" in client
+          ) {
+            client.navigate(
+              targetUrl
+            );
+
+            return client.focus();
+          }
+        }
+
+        if (
+          clients.openWindow
+        ) {
+          return clients.openWindow(
+            targetUrl
+          );
+        }
+
+        return undefined;
+      })
     );
   }
 );
-
-
-// ========================================
-// OPEN OR FOCUS WEBSITE
-// ========================================
-
-async function openNotificationUrl(
-  targetUrl
-) {
-  const absoluteUrl =
-    new URL(
-      targetUrl,
-      self.location.origin
-    ).href;
-
-  const clientList =
-    await self.clients.matchAll({
-      type: "window",
-      includeUncontrolled: true,
-    });
-
-  for (
-    const client
-    of clientList
-  ) {
-    if (
-      "focus" in client
-    ) {
-      try {
-        const clientUrl =
-          new URL(
-            client.url
-          );
-
-        if (
-          clientUrl.origin ===
-          self.location.origin
-        ) {
-          if (
-            "navigate" in client &&
-            client.url !==
-              absoluteUrl
-          ) {
-            await client.navigate(
-              absoluteUrl
-            );
-          }
-
-          return client.focus();
-        }
-      } catch {
-        // Ignore invalid client URLs.
-      }
-    }
-  }
-
-  if (
-    self.clients.openWindow
-  ) {
-    return self.clients.openWindow(
-      absoluteUrl
-    );
-  }
-
-  return null;
-}
-
-
-// ========================================
-// SERVICE WORKER INSTALL
-// ========================================
 
 self.addEventListener(
   "install",
@@ -168,11 +117,6 @@ self.addEventListener(
     self.skipWaiting();
   }
 );
-
-
-// ========================================
-// SERVICE WORKER ACTIVATE
-// ========================================
 
 self.addEventListener(
   "activate",
