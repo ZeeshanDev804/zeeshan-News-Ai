@@ -1,19 +1,17 @@
 import {
-  updateTakedownStatus,
   placeLegalHold,
+  releaseLegalHold,
+  updateTakedownStatus,
 } from "./copyrightProtection.js";
 
 import {
   recordTakedownComplaint,
   recordLegalHold,
+  recordLegalHoldRelease,
+  recordManualReview,
 } from "./legalAudit.js";
 
-
-// ========================================
-// VALID TAKEDOWN STATUSES
-// ========================================
-
-const TAKEDOWN_STATUSES = [
+const VALID_TAKEDOWN_STATUSES = [
   "none",
   "received",
   "under_review",
@@ -22,159 +20,35 @@ const TAKEDOWN_STATUSES = [
   "resolved",
 ];
 
-
-// ========================================
-// NORMALIZE VALUE
-// ========================================
-
-function normalizeValue(
-  value,
-  fallback = ""
-) {
-  return String(
-    value ?? fallback
-  ).trim();
+function normalizeValue(value, fallback = "") {
+  return String(value ?? fallback).trim();
 }
 
+function normalizeStatus(status) {
+  const value = normalizeValue(
+    status,
+    "received"
+  ).toLowerCase();
 
-// ========================================
-// NORMALIZE STATUS
-// ========================================
-
-function normalizeStatus(
-  status
-) {
-  const value =
-    normalizeValue(
-      status,
-      "received"
-    ).toLowerCase();
-
-  return TAKEDOWN_STATUSES.includes(
-    value
-  )
+  return VALID_TAKEDOWN_STATUSES.includes(value)
     ? value
     : "received";
 }
 
+function validateArticleId(articleId) {
+  const id = Number(articleId);
 
-// ========================================
-// CREATE COMPLAINT RECORD
-// ========================================
-
-export function createTakedownComplaint(
-  data = {}
-) {
-  const articleId =
-    Number(data.articleId);
-
-  if (
-    !Number.isFinite(
-      articleId
-    )
-  ) {
-    throw new Error(
-      "Valid article ID is required"
-    );
+  if (!Number.isFinite(id) || id <= 0) {
+    throw new Error("Valid article ID is required");
   }
 
-  const complainant =
-    normalizeValue(
-      data.complainant,
-      "Unknown complainant"
-    );
-
-  const reason =
-    normalizeValue(
-      data.reason,
-      "Copyright complaint received"
-    );
-
-  const contact =
-    normalizeValue(
-      data.contact
-    );
-
-  const evidence =
-    normalizeValue(
-      data.evidence
-    );
-
-  return {
-    articleId,
-    complainant,
-    reason,
-    contact,
-    evidence,
-    status: "received",
-    receivedAt: new Date(),
-  };
+  return id;
 }
 
-
-// ========================================
-// SAVE COMPLAINT TO DATABASE
-// ========================================
-
-async function saveComplaint(
+export async function createTakedownComplaint(
   db,
-  complaint
-) {
-  const result =
-    await db.query(
-      `
-      INSERT INTO takedown_complaints
-        (
-          article_id,
-          complainant,
-          contact,
-          reason,
-          evidence,
-          status,
-          received_at
-        )
-      VALUES
-        (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7
-        )
-      RETURNING
-        id,
-        article_id,
-        complainant,
-        contact,
-        reason,
-        evidence,
-        status,
-        received_at
-      `,
-      [
-        complaint.articleId,
-        complaint.complainant,
-        complaint.contact,
-        complaint.reason,
-        complaint.evidence,
-        complaint.status,
-        complaint.receivedAt,
-      ]
-    );
-
-  return result.rows[0];
-}
-
-
-// ========================================
-// RECEIVE TAKEDOWN COMPLAINT
-// ========================================
-
-export async function receiveTakedownComplaint(
-  db,
-  data = {}
+  articleId,
+  complaint = {}
 ) {
   if (!db) {
     throw new Error(
@@ -182,123 +56,119 @@ export async function receiveTakedownComplaint(
     );
   }
 
-  const complaint =
-    createTakedownComplaint(
-      data
-    );
+  const id = validateArticleId(articleId);
 
+  const complainantName = normalizeValue(
+    complaint.complainantName,
+    "Unknown"
+  );
 
-  // --------------------------------------
-  // Save complaint permanently
-  // --------------------------------------
+  const complainantEmail = normalizeValue(
+    complaint.complainantEmail
+  );
 
-  const savedComplaint =
-    await saveComplaint(
-      db,
-      complaint
-    );
+  const reason = normalizeValue(
+    complaint.reason,
+    "Copyright complaint received"
+  );
 
+  const sourceUrl = normalizeValue(
+    complaint.sourceUrl
+  );
 
-  // --------------------------------------
-  // Put article on legal hold
-  // --------------------------------------
+  const details = {
+    complainantName,
+    complainantEmail,
+    reason,
+    sourceUrl,
+    receivedAt: new Date(),
+  };
+
+  // Save complaint in dedicated database table
+  const complaintResult = await db.query(
+    `
+    INSERT INTO takedown_complaints
+      (
+        article_id,
+        complainant_name,
+        complainant_email,
+        reason,
+        source_url,
+        status
+      )
+    VALUES
+      ($1, $2, $3, $4, $5, $6)
+    RETURNING
+      id,
+      article_id,
+      complainant_name,
+      complainant_email,
+      reason,
+      source_url,
+      status,
+      created_at,
+      updated_at
+    `,
+    [
+      id,
+      complainantName,
+      complainantEmail,
+      reason,
+      sourceUrl,
+      "received",
+    ]
+  );
+
+  await updateTakedownStatus(
+    db,
+    id,
+    "received",
+    reason
+  );
 
   const holdResult =
     await placeLegalHold(
       db,
-      complaint.articleId,
-      complaint.reason
+      id,
+      `Takedown complaint received: ${reason}`
     );
-
-
-  // --------------------------------------
-  // Update article takedown status
-  // --------------------------------------
-
-  const statusResult =
-    await updateTakedownStatus(
-      db,
-      complaint.articleId,
-      "received",
-      complaint.reason
-    );
-
-
-  // --------------------------------------
-  // Save complaint audit
-  // --------------------------------------
 
   await recordTakedownComplaint(
     db,
-    complaint.articleId,
+    id,
     {
+      ...details,
       complaintId:
-        savedComplaint.id,
-
-      complainant:
-        complaint.complainant,
-
-      contact:
-        complaint.contact,
-
-      reason:
-        complaint.reason,
-
-      evidence:
-        complaint.evidence,
-
-      status:
-        complaint.status,
-
-      receivedAt:
-        complaint.receivedAt,
+        complaintResult.rows[0]?.id || null,
     },
     "system"
   );
 
-
-  // --------------------------------------
-  // Save legal hold audit
-  // --------------------------------------
-
   await recordLegalHold(
     db,
-    complaint.articleId,
-    complaint.reason,
+    id,
+    `Takedown complaint received: ${reason}`,
     "system"
   );
 
-
   return {
     success: true,
-
+    articleId: id,
+    takedownStatus: "received",
+    legalHold: true,
+    legalReviewRequired: true,
     complaint:
-      savedComplaint,
-
-    legalHold:
-      holdResult.legalHold,
-
-    copyrightStatus:
-      holdResult.copyrightStatus,
-
-    takedownStatus:
-      statusResult.takedownStatus,
-
-    legalReviewRequired:
-      true,
+      complaintResult.rows[0],
+    hold: holdResult,
   };
 }
-
-
-// ========================================
-// CHANGE TAKEDOWN STATUS
-// ========================================
 
 export async function changeTakedownStatus(
   db,
   articleId,
   status,
-  note = ""
+  note = "",
+  actor = "ceo"
 ) {
   if (!db) {
     throw new Error(
@@ -306,118 +176,335 @@ export async function changeTakedownStatus(
     );
   }
 
-  const safeArticleId =
-    Number(articleId);
-
-  if (
-    !Number.isFinite(
-      safeArticleId
-    )
-  ) {
-    throw new Error(
-      "Valid article ID is required"
-    );
-  }
+  const id = validateArticleId(articleId);
 
   const normalizedStatus =
-    normalizeStatus(
-      status
-    );
+    normalizeStatus(status);
 
   const normalizedNote =
-    normalizeValue(
-      note,
-      `Takedown status changed to ${normalizedStatus}`
-    );
-
-
-  // --------------------------------------
-  // Update article status
-  // --------------------------------------
+    normalizeValue(note);
 
   const result =
     await updateTakedownStatus(
       db,
-      safeArticleId,
+      id,
       normalizedStatus,
       normalizedNote
     );
-
-
-  // --------------------------------------
-  // Update latest complaint record
-  // --------------------------------------
 
   await db.query(
     `
     UPDATE takedown_complaints
     SET
       status = $1,
-      review_notes =
-        CASE
-          WHEN $2 <> ''
-          THEN $2
-          ELSE review_notes
-        END,
-
-      reviewed_at =
-        CASE
-          WHEN $1 IN (
-            'under_review',
-            'action_taken',
-            'rejected',
-            'resolved'
-          )
-          THEN CURRENT_TIMESTAMP
-          ELSE reviewed_at
-        END,
-
-      resolved_at =
-        CASE
-          WHEN $1 IN (
-            'resolved',
-            'rejected'
-          )
-          THEN CURRENT_TIMESTAMP
-          ELSE resolved_at
-        END
-
-    WHERE id = (
-      SELECT id
-      FROM takedown_complaints
-      WHERE article_id = $3
-      ORDER BY created_at DESC
-      LIMIT 1
-    )
+      updated_at = CURRENT_TIMESTAMP
+    WHERE
+      article_id = $2
+      AND status NOT IN ('resolved', 'rejected')
     `,
     [
       normalizedStatus,
-      normalizedNote,
-      safeArticleId,
+      id,
     ]
   );
 
+  await recordManualReview(
+    db,
+    id,
+    {
+      status: normalizedStatus,
+      reason:
+        normalizedNote ||
+        `Takedown status changed to ${normalizedStatus}`,
+      takedownStatus:
+        normalizedStatus,
+    },
+    actor
+  );
 
   return {
     success: true,
-
-    articleId:
-      safeArticleId,
-
+    articleId: id,
     takedownStatus:
       result.takedownStatus,
-
-    note:
-      normalizedNote,
+    actor,
   };
 }
 
+export async function resolveTakedownComplaint(
+  db,
+  articleId,
+  decision = {},
+  actor = "ceo"
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
 
-// ========================================
-// GET TAKEDOWN STATUS
-// ========================================
+  const id = validateArticleId(articleId);
 
-export async function getTakedownStatus(
+  const outcome = normalizeValue(
+    decision.outcome
+  ).toLowerCase();
+
+  const note = normalizeValue(
+    decision.note,
+    "Takedown complaint resolved"
+  );
+
+  if (
+    outcome !== "cleared" &&
+    outcome !== "action_taken"
+  ) {
+    throw new Error(
+      "Resolution outcome must be 'cleared' or 'action_taken'"
+    );
+  }
+
+  if (outcome === "cleared") {
+    await updateTakedownStatus(
+      db,
+      id,
+      "resolved",
+      note
+    );
+
+    await releaseLegalHold(
+      db,
+      id,
+      note
+    );
+
+    await db.query(
+      `
+      UPDATE takedown_complaints
+      SET
+        status = 'resolved',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE
+        article_id = $1
+        AND status NOT IN ('rejected')
+      `,
+      [id]
+    );
+
+    await recordLegalHoldRelease(
+      db,
+      id,
+      note,
+      actor
+    );
+
+    await recordManualReview(
+      db,
+      id,
+      {
+        status: "resolved",
+        reason: note,
+        outcome: "cleared",
+      },
+      actor
+    );
+
+    return {
+      success: true,
+      articleId: id,
+      outcome: "cleared",
+      takedownStatus: "resolved",
+      legalHold: false,
+      legalReviewRequired: false,
+      copyrightStatus: "cleared",
+    };
+  }
+
+  await updateTakedownStatus(
+    db,
+    id,
+    "action_taken",
+    note
+  );
+
+  await db.query(
+    `
+    UPDATE takedown_complaints
+    SET
+      status = 'action_taken',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE
+      article_id = $1
+      AND status NOT IN ('resolved', 'rejected')
+    `,
+    [id]
+  );
+
+  await recordManualReview(
+    db,
+    id,
+    {
+      status: "action_taken",
+      reason: note,
+      outcome: "action_taken",
+    },
+    actor
+  );
+
+  return {
+    success: true,
+    articleId: id,
+    outcome: "action_taken",
+    takedownStatus: "action_taken",
+    legalHold: true,
+    legalReviewRequired: true,
+  };
+}
+
+export async function rejectTakedownComplaint(
+  db,
+  articleId,
+  reason,
+  actor = "ceo"
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  const id = validateArticleId(articleId);
+
+  const note = normalizeValue(
+    reason,
+    "Takedown complaint rejected after review"
+  );
+
+  await updateTakedownStatus(
+    db,
+    id,
+    "rejected",
+    note
+  );
+
+  await releaseLegalHold(
+    db,
+    id,
+    note
+  );
+
+  await db.query(
+    `
+    UPDATE takedown_complaints
+    SET
+      status = 'rejected',
+      updated_at = CURRENT_TIMESTAMP
+    WHERE
+      article_id = $1
+      AND status NOT IN ('resolved')
+    `,
+    [id]
+  );
+
+  await recordLegalHoldRelease(
+    db,
+    id,
+    note,
+    actor
+  );
+
+  await recordManualReview(
+    db,
+    id,
+    {
+      status: "rejected",
+      reason: note,
+      outcome: "rejected",
+    },
+    actor
+  );
+
+  return {
+    success: true,
+    articleId: id,
+    outcome: "rejected",
+    takedownStatus: "rejected",
+    legalHold: false,
+    legalReviewRequired: false,
+    copyrightStatus: "cleared",
+  };
+}
+
+export async function getTakedownComplaints(
+  db,
+  status = null,
+  limit = 100
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 100, 1),
+    500
+  );
+
+  const normalizedStatus =
+    status
+      ? normalizeStatus(status)
+      : null;
+
+  const result = await db.query(
+    `
+    SELECT
+      tc.id,
+      tc.article_id,
+      tc.complainant_name,
+      tc.complainant_email,
+      tc.reason,
+      tc.source_url,
+      tc.status,
+      tc.created_at,
+      tc.updated_at,
+
+      a.title,
+      a.source,
+      a.link,
+      a.copyright_status,
+      a.copyright_risk,
+      a.source_attribution,
+      a.legal_hold,
+      a.takedown_status,
+      a.legal_review_required,
+      a.legal_notes
+
+    FROM takedown_complaints tc
+
+    INNER JOIN articles a
+      ON a.id = tc.article_id
+
+    WHERE
+      (
+        $1::text IS NULL
+        OR tc.status = $1
+      )
+
+    ORDER BY
+      tc.created_at DESC
+
+    LIMIT $2
+    `,
+    [
+      normalizedStatus,
+      safeLimit,
+    ]
+  );
+
+  return result.rows;
+}
+
+export async function getTakedownCase(
   db,
   articleId
 ) {
@@ -427,265 +514,56 @@ export async function getTakedownStatus(
     );
   }
 
-  const safeArticleId =
-    Number(articleId);
+  const id = validateArticleId(articleId);
 
-  if (
-    !Number.isFinite(
-      safeArticleId
-    )
-  ) {
-    throw new Error(
-      "Valid article ID is required"
-    );
-  }
+  const result = await db.query(
+    `
+    SELECT
+      tc.id AS complaint_id,
+      tc.article_id,
+      tc.complainant_name,
+      tc.complainant_email,
+      tc.reason,
+      tc.source_url,
+      tc.status AS complaint_status,
+      tc.created_at AS complaint_created_at,
+      tc.updated_at AS complaint_updated_at,
 
-  const result =
-    await db.query(
-      `
-      SELECT
-        id,
-        title,
-        source,
-        link,
-        copyright_status,
-        copyright_risk,
-        legal_hold,
-        legal_review_required,
-        takedown_status,
-        legal_notes
-      FROM articles
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [
-        safeArticleId,
-      ]
-    );
+      a.title,
+      a.source,
+      a.link,
+      a.copyright_status,
+      a.copyright_risk,
+      a.source_attribution,
+      a.legal_hold,
+      a.takedown_status,
+      a.legal_review_required,
+      a.legal_notes
 
+    FROM takedown_complaints tc
 
-  if (
-    result.rows.length === 0
-  ) {
+    INNER JOIN articles a
+      ON a.id = tc.article_id
+
+    WHERE tc.article_id = $1
+
+    ORDER BY
+      tc.created_at DESC
+
+    LIMIT 1
+    `,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
     return null;
   }
-
 
   return result.rows[0];
 }
 
-
-// ========================================
-// GET ARTICLE COMPLAINTS
-// ========================================
-
-export async function getArticleComplaints(
-  db,
-  articleId,
-  limit = 100
-) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
-
-  const safeArticleId =
-    Number(articleId);
-
-  if (
-    !Number.isFinite(
-      safeArticleId
-    )
-  ) {
-    throw new Error(
-      "Valid article ID is required"
-    );
-  }
-
-  const safeLimit =
-    Math.min(
-      Math.max(
-        Number(limit) || 100,
-        1
-      ),
-      500
-    );
-
-
-  const result =
-    await db.query(
-      `
-      SELECT
-        id,
-        article_id,
-        complainant,
-        contact,
-        reason,
-        evidence,
-        status,
-        received_at,
-        reviewed_at,
-        resolved_at,
-        review_notes,
-        created_at
-      FROM takedown_complaints
-      WHERE article_id = $1
-      ORDER BY
-        created_at DESC
-      LIMIT $2
-      `,
-      [
-        safeArticleId,
-        safeLimit,
-      ]
-    );
-
-
-  return result.rows;
+export function getTakedownStatuses() {
+  return [
+    ...VALID_TAKEDOWN_STATUSES,
+  ];
 }
-
-
-// ========================================
-// GET RECENT COMPLAINTS
-// ========================================
-
-export async function getRecentComplaints(
-  db,
-  limit = 100
-) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
-
-  const safeLimit =
-    Math.min(
-      Math.max(
-        Number(limit) || 100,
-        1
-      ),
-      500
-    );
-
-
-  const result =
-    await db.query(
-      `
-      SELECT
-        tc.id,
-        tc.article_id,
-        tc.complainant,
-        tc.contact,
-        tc.reason,
-        tc.evidence,
-        tc.status,
-        tc.received_at,
-        tc.reviewed_at,
-        tc.resolved_at,
-        tc.review_notes,
-        tc.created_at,
-
-        a.title,
-        a.source,
-        a.link,
-        a.copyright_status,
-        a.copyright_risk,
-        a.legal_hold,
-        a.legal_review_required
-
-      FROM takedown_complaints tc
-
-      JOIN articles a
-        ON a.id = tc.article_id
-
-      ORDER BY
-        tc.created_at DESC
-
-      LIMIT $1
-      `,
-      [
-        safeLimit,
-      ]
-    );
-
-
-  return result.rows;
-}
-
-
-// ========================================
-// CHECK IF ARTICLE SHOULD REMAIN BLOCKED
-// ========================================
-
-export function shouldRemainBlocked(
-  article = {}
-) {
-  const legalHold =
-    Boolean(
-      article.legal_hold
-    );
-
-  const legalReviewRequired =
-    Boolean(
-      article.legal_review_required
-    );
-
-  const status =
-    normalizeStatus(
-      article.takedown_status
-    );
-
-
-  if (legalHold) {
-    return {
-      blocked: true,
-
-      reason:
-        "Article is under legal hold",
-    };
-  }
-
-
-  if (
-    legalReviewRequired
-  ) {
-    return {
-      blocked: true,
-
-      reason:
-        "Legal review is required",
-    };
-  }
-
-
-  if (
-    status === "received" ||
-    status === "under_review"
-  ) {
-    return {
-      blocked: true,
-
-      reason:
-        "Takedown complaint is active",
-    };
-  }
-
-
-  return {
-    blocked: false,
-
-    reason:
-      "No active takedown block",
-  };
-}
-
-
-// ========================================
-// EXPORT STATUSES
-// ========================================
-
-export {
-  TAKEDOWN_STATUSES,
-};
