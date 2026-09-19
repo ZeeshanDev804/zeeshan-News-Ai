@@ -8,54 +8,37 @@
     content="width=device-width, initial-scale=1.0"
   >
 
+  <meta
+    name="theme-color"
+    content="#05070d"
+  >
+
   <title>
     ZEESHAN NEWS AI — CEO Command Center
   </title>
 
-  <meta
-    name="description"
-    content="ZEESHAN NEWS AI Founder and CEO Command Center"
-  >
-
   <style>
-    :root {
-      --bg: #060b11;
-      --panel: #0c141d;
-      --panel2: #101b26;
-      --border: rgba(255,255,255,0.08);
-      --text: #edf5f8;
-      --muted: #899ba8;
-      --green: #39e6a5;
-      --blue: #55baff;
-      --orange: #ffb45b;
-      --red: #ff6578;
-    }
-
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #05070d;
+      --panel: #0b101a;
+      --panel-2: #0f1623;
+      --border: #1d2939;
+      --text: #eef4ff;
+      --muted: #8d9bb0;
+      --accent: #38bdf8;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
     }
 
     body {
-      margin: 0;
-
       min-height: 100vh;
-
-      background:
-        linear-gradient(
-          rgba(255,255,255,0.025) 1px,
-          transparent 1px
-        ),
-        linear-gradient(
-          90deg,
-          rgba(255,255,255,0.025) 1px,
-          transparent 1px
-        ),
-        var(--bg);
-
-      background-size: 32px 32px;
-
-      color: var(--text);
-
       font-family:
         Inter,
         system-ui,
@@ -63,58 +46,91 @@
         BlinkMacSystemFont,
         "Segoe UI",
         sans-serif;
+
+      color: var(--text);
+
+      background:
+        linear-gradient(
+          rgba(56, 189, 248, 0.025) 1px,
+          transparent 1px
+        ),
+        linear-gradient(
+          90deg,
+          rgba(56, 189, 248, 0.025) 1px,
+          transparent 1px
+        ),
+        var(--bg);
+
+      background-size: 32px 32px;
     }
 
-    button,
-    input,
-    select {
+    button {
       font: inherit;
     }
 
     .container {
-      width: min(1250px, 94%);
-      margin: auto;
-      padding: 18px 0 50px;
+      width: min(1400px, 100%);
+      margin: 0 auto;
+      padding: 18px;
     }
 
-    header {
+    /* =========================
+       HEADER
+    ========================= */
+
+    .topbar {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      gap: 15px;
+      justify-content: space-between;
+      gap: 16px;
 
-      padding: 18px;
+      padding: 18px 20px;
+      margin-bottom: 18px;
 
-      background:
-        rgba(12,20,29,0.92);
-
-      border:
-        1px solid var(--border);
-
+      background: rgba(11, 16, 26, 0.92);
+      border: 1px solid var(--border);
       border-radius: 18px;
 
-      backdrop-filter:
-        blur(14px);
-
-      position: sticky;
-      top: 10px;
-      z-index: 20;
+      backdrop-filter: blur(16px);
     }
 
     .brand {
-      font-size: 19px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .logo {
+      width: 48px;
+      height: 48px;
+
+      display: grid;
+      place-items: center;
+
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 14px;
+
+      background:
+        linear-gradient(
+          135deg,
+          rgba(56, 189, 248, 0.15),
+          rgba(99, 102, 241, 0.08)
+        );
+
+      color: var(--accent);
       font-weight: 900;
-      letter-spacing: 0.08em;
+      font-size: 18px;
     }
 
-    .brand span {
-      color: var(--green);
+    .brand h1 {
+      font-size: 20px;
+      letter-spacing: 0.5px;
     }
 
-    .role {
+    .brand p {
+      margin-top: 4px;
       color: var(--muted);
-      font-size: 11px;
-      margin-top: 5px;
+      font-size: 12px;
     }
 
     .system-status {
@@ -122,245 +138,547 @@
       align-items: center;
       gap: 8px;
 
-      color: var(--green);
+      padding: 9px 12px;
+
+      border: 1px solid rgba(34, 197, 94, 0.25);
+      border-radius: 999px;
+
+      color: #86efac;
+      background: rgba(34, 197, 94, 0.08);
 
       font-size: 12px;
-      font-weight: 800;
+      white-space: nowrap;
     }
 
-    .dot {
-      width: 9px;
-      height: 9px;
-
+    .status-dot {
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
-
-      background:
-        var(--green);
-
-      box-shadow:
-        0 0 13px var(--green);
+      background: var(--green);
+      box-shadow: 0 0 12px var(--green);
     }
 
-    .hero {
-      margin: 28px 0 20px;
-    }
-
-    .hero h1 {
-      margin: 0;
-
-      font-size:
-        clamp(28px, 6vw, 52px);
-
-      line-height: 1.05;
-    }
-
-    .hero p {
-      margin: 10px 0 0;
-
-      color: var(--muted);
-
-      font-size: 14px;
-    }
-
-    .stats {
-      display: grid;
-
-      grid-template-columns:
-        repeat(4, minmax(0, 1fr));
-
-      gap: 12px;
-    }
-
-    .stat {
-      background:
-        rgba(12,20,29,0.92);
-
-      border:
-        1px solid var(--border);
-
-      border-radius: 15px;
-
-      padding: 17px;
-
-      min-height: 120px;
-    }
-
-    .label {
-      color: var(--muted);
-
-      font-size: 11px;
-
-      text-transform:
-        uppercase;
-
-      letter-spacing:
-        0.08em;
-    }
-
-    .value {
-      margin-top: 12px;
-
-      font-size: 30px;
-
-      font-weight: 900;
-    }
+    /* =========================
+       SECTION
+    ========================= */
 
     .section {
       margin-top: 18px;
 
-      background:
-        rgba(12,20,29,0.92);
+      padding: 18px;
 
-      border:
-        1px solid var(--border);
+      background: rgba(11, 16, 26, 0.88);
+      border: 1px solid var(--border);
+      border-radius: 18px;
 
-      border-radius: 17px;
-
-      padding: 17px;
+      backdrop-filter: blur(14px);
     }
 
     .section-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      justify-content: space-between;
 
-      margin-bottom: 14px;
+      gap: 12px;
+      margin-bottom: 16px;
     }
 
-    .section h2 {
-      margin: 0;
-
+    .section-header h2 {
       font-size: 16px;
+      letter-spacing: 0.3px;
     }
 
-    .section-code {
+    .section-header span {
       color: var(--muted);
-
-      font-size: 10px;
-
-      letter-spacing:
-        0.12em;
+      font-size: 11px;
     }
 
-    .rows {
+    /* =========================
+       CARDS
+    ========================= */
+
+    .grid {
       display: grid;
-      gap: 8px;
+      gap: 12px;
     }
 
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
+    .overview-grid {
+      grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+    }
 
-      padding: 11px 13px;
+    .analytics-grid {
+      grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+    }
+
+    .card {
+      min-width: 0;
+
+      padding: 16px;
 
       background:
-        var(--panel2);
+        linear-gradient(
+          145deg,
+          rgba(255,255,255,0.025),
+          rgba(255,255,255,0.008)
+        );
 
-      border:
-        1px solid var(--border);
-
-      border-radius: 10px;
-
-      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
     }
 
-    .row-name {
+    .card-label {
       color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
     }
 
-    .badge {
-      display: inline-flex;
+    .card-value {
+      margin-top: 8px;
 
-      padding:
-        5px 9px;
-
-      border-radius:
-        999px;
-
-      font-size: 10px;
-
+      font-size: 28px;
       font-weight: 800;
 
-      background:
-        rgba(57,230,165,0.1);
-
-      color:
-        var(--green);
+      color: var(--text);
     }
 
-    .warning {
-      color:
-        var(--orange);
-
-      background:
-        rgba(255,180,91,0.1);
+    .card-small {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
     }
 
-    .danger {
-      color:
-        var(--red);
+    /* =========================
+       MODULES
+    ========================= */
 
-      background:
-        rgba(255,101,120,0.1);
-    }
-
-    .info {
-      color:
-        var(--blue);
-
-      background:
-        rgba(85,186,255,0.1);
-    }
-
-    .controls {
+    .module-grid {
       display: grid;
 
       grid-template-columns:
-        repeat(2, minmax(0, 1fr));
+        repeat(6, minmax(0, 1fr));
 
       gap: 10px;
     }
 
-    .control {
+    .module {
       padding: 14px;
 
+      border: 1px solid var(--border);
+      border-radius: 13px;
+
+      background: var(--panel-2);
+    }
+
+    .module-name {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .module-status {
+      margin-top: 7px;
+
+      font-size: 10px;
+      color: #86efac;
+    }
+
+    /* =========================
+       TABLE
+    ========================= */
+
+    .table-wrap {
+      overflow-x: auto;
+
+      border: 1px solid var(--border);
+      border-radius: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+
+      text-align: left;
+
+      border-bottom:
+        1px solid rgba(29, 41, 57, 0.8);
+
+      font-size: 12px;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 10px;
+
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+
+      background: rgba(255,255,255,0.015);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .positive {
+      color: #86efac;
+    }
+
+    .warning {
+      color: #fcd34d;
+    }
+
+    .danger {
+      color: #fca5a5;
+    }
+
+    /* =========================
+       BUTTONS
+    ========================= */
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      border: 1px solid var(--border);
+
+      background: var(--panel-2);
+      color: var(--text);
+
+      border-radius: 10px;
+
+      padding: 9px 13px;
+
+      cursor: pointer;
+
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .button:hover {
+      border-color: rgba(56, 189, 248, 0.45);
+    }
+
+    .button.primary {
+      border-color:
+        rgba(56, 189, 248, 0.35);
+
       background:
-        var(--panel2);
+        rgba(56, 189, 248, 0.08);
 
-      border:
-        1px solid var(--border);
-
-      border-radius: 12px;
+      color: #bae6fd;
     }
 
-    .control strong {
-      display: block;
+    /* =========================
+       EMPTY / ERROR
+    ========================= */
 
-      margin-bottom: 5px;
+    .empty {
+      padding: 18px;
 
-      font-size: 13px;
-    }
-
-    .control span {
       color: var(--muted);
 
-      font-size: 11px;
+      text-align: center;
+
+      font-size: 12px;
     }
 
-    .refresh {
-      width: 100%;
+    .error {
+      color: #fca5a5;
+    }
 
-      margin-top: 18px;
+    /* =========================
+       FOOTER
+    ========================= */
 
-      padding: 14px;
+    footer {
+      padding: 25px 5px 10px;
 
-      border:
-        1px solid var(--border);
+      text-align: center;
 
-      border-radius: 12px;
+      color: var(--muted);
 
-      background:
-        var(--panel2
+      font-size: 10px;
+    }
+
+    /* =========================
+       MOBILE
+    ========================= */
+
+    @media (max-width: 1000px) {
+
+      .overview-grid,
+      .analytics-grid {
+        grid-template-columns:
+          repeat(2, minmax(0, 1fr));
+      }
+
+      .module-grid {
+        grid-template-columns:
+          repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 600px) {
+
+      .container {
+        padding: 10px;
+      }
+
+      .topbar {
+        padding: 14px;
+
+        align-items: flex-start;
+
+        flex-direction: column;
+      }
+
+      .brand h1 {
+        font-size: 17px;
+      }
+
+      .overview-grid,
+      .analytics-grid {
+        grid-template-columns:
+          1fr 1fr;
+      }
+
+      .module-grid {
+        grid-template-columns:
+          1fr 1fr;
+      }
+
+      .section {
+        padding: 13px;
+        border-radius: 14px;
+      }
+
+      .card {
+        padding: 13px;
+      }
+
+      .card-value {
+        font-size: 22px;
+      }
+    }
+
+    @media (max-width: 390px) {
+
+      .overview-grid,
+      .analytics-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .module-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="container">
+
+    <!-- =========================
+         HEADER
+    ========================= -->
+
+    <header class="topbar">
+
+      <div class="brand">
+
+        <div class="logo">
+          ZA
+        </div>
+
+        <div>
+          <h1>
+            ZEESHAN NEWS AI
+          </h1>
+
+          <p>
+            Founder & CEO — AI News Command Center
+          </p>
+        </div>
+
+      </div>
+
+      <div class="system-status">
+        <span class="status-dot"></span>
+        SYSTEM ONLINE
+      </div>
+
+    </header>
+
+
+    <!-- =========================
+         OVERVIEW
+    ========================= -->
+
+    <section class="section">
+
+      <div class="section-header">
+        <h2>
+          01 — CEO OVERVIEW
+        </h2>
+
+        <span>
+          Live system statistics
+        </span>
+      </div>
+
+      <div
+        class="grid overview-grid"
+        id="overviewGrid"
+      >
+
+        <div class="card">
+          <div class="card-label">
+            Total News
+          </div>
+
+          <div
+            class="card-value"
+            id="totalNews"
+          >
+            —
+          </div>
+
+          <div class="card-small">
+            Articles in database
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-label">
+            AI Analyzed
+          </div>
+
+          <div
+            class="card-value"
+            id="analyzedNews"
+          >
+            —
+          </div>
+
+          <div class="card-small">
+            AI processed articles
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-label">
+            Pending AI
+          </div>
+
+          <div
+            class="card-value"
+            id="pendingAnalysis"
+          >
+            —
+          </div>
+
+          <div class="card-small">
+            Waiting for analysis
+          </div>
+        </div>
+
+
+        <div class="card">
+          <div class="card-label">
+            Push Users
+          </div>
+
+          <div
+            class="card-value"
+            id="pushUsers"
+          >
+            —
+          </div>
+
+          <div class="card-small">
+            Active subscriptions
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- =========================
+         ANALYTICS
+    ========================= -->
+
+    <section class="section">
+
+      <div class="section-header">
+
+        <div>
+          <h2>
+            02 — ANALYTICS INTELLIGENCE
+          </h2>
+
+          <span>
+            Last 30 days
+          </span>
+        </div>
+
+      </div>
+
+
+      <div
+        class="grid analytics-grid"
+      >
+
+        <div class="card">
+
+          <div class="card-label">
+            Total Events
+          </div>
+
+          <div
+            class="card-value"
+            id="analyticsEvents"
+          >
+            —
+          </div>
+
+          <div class="card-small">
+            All tracked activity
+          </div>
+
+        </div>
+
+
+        <div class="card">
+
+          <div class="card-label">
+            Page Views
+          </div>
+
+          <div
+            class="card-value"
+            id="analyticsPageViews"
+          >
+            —
+          </div>
+
+         
