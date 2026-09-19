@@ -13,6 +13,7 @@ import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
 import pushRoutes from "./src/routes/pushRoutes.js";
 import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
+import analyticsRoutes from "./src/routes/analyticsRoutes.js";
 
 import {
   runRssEngine,
@@ -40,6 +41,7 @@ const {
   Pool,
 } = pg;
 
+
 const __filename =
   fileURLToPath(
     import.meta.url
@@ -50,13 +52,16 @@ const __dirname =
     __filename
   );
 
+
 const app =
   express();
+
 
 const PORT =
   Number(
     process.env.PORT || 3000
   );
+
 
 if (
   !process.env.DATABASE_URL
@@ -64,8 +69,10 @@ if (
   console.error(
     "❌ DATABASE_URL is not configured."
   );
+
   process.exit(1);
 }
+
 
 const pool =
   new Pool({
@@ -86,8 +93,14 @@ const pool =
       10000,
   });
 
+
 app.locals.db =
   pool;
+
+
+/* -------------------------
+   BODY PARSING
+------------------------- */
 
 app.use(
   express.json({
@@ -102,6 +115,11 @@ app.use(
   })
 );
 
+
+/* -------------------------
+   STATIC WEBSITE
+------------------------- */
+
 app.use(
   express.static(
     path.join(
@@ -111,22 +129,35 @@ app.use(
   )
 );
 
+
+/* -------------------------
+   HEALTH CHECK
+------------------------- */
+
 app.get(
   "/health",
   async (req, res) => {
     try {
+
       await pool.query(
         "SELECT 1"
       );
 
       res.json({
         success: true,
-        status: "healthy",
-        database: "connected",
+
+        status:
+          "healthy",
+
+        database:
+          "connected",
+
         timestamp:
           new Date().toISOString(),
       });
+
     } catch (error) {
+
       console.error(
         "❌ Health check error:",
         error.message
@@ -134,8 +165,13 @@ app.get(
 
       res.status(500).json({
         success: false,
-        status: "unhealthy",
-        database: "error",
+
+        status:
+          "unhealthy",
+
+        database:
+          "error",
+
         error:
           error.message,
       });
@@ -143,62 +179,107 @@ app.get(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| API ROUTES
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   NEWS
+------------------------- */
 
 app.use(
   "/api/news",
   newsRoutes
 );
 
+
+/* -------------------------
+   COPYRIGHT / TAKEDOWN
+------------------------- */
+
 app.use(
   "/api/takedown",
   takedownRoutes
 );
+
+
+/* -------------------------
+   SOURCE HEALTH
+------------------------- */
 
 app.use(
   "/api/source-health",
   sourceHealthRoutes
 );
 
+
+/* -------------------------
+   AUTOMATION HISTORY
+------------------------- */
+
 app.use(
   "/api/automation-history",
   automationHistoryRoutes
 );
+
+
+/* -------------------------
+   SOURCE POLICY
+------------------------- */
 
 app.use(
   "/api/source-policy",
   sourcePolicyRoutes
 );
 
+
+/* -------------------------
+   WEB PUSH
+------------------------- */
+
 app.use(
   "/api/push",
   pushRoutes
 );
+
+
+/* -------------------------
+   PUSH ADMIN
+------------------------- */
 
 app.use(
   "/api/push-admin",
   pushAdminRoutes
 );
 
+
+/* -------------------------
+   CEO DASHBOARD
+------------------------- */
+
 app.use(
   "/api/dashboard",
   dashboardRoutes
 );
 
-/*
-|--------------------------------------------------------------------------
-| RSS MANUAL RUN
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   ANALYTICS
+------------------------- */
+
+app.use(
+  "/api/analytics",
+  analyticsRoutes
+);
+
+
+/* -------------------------
+   MANUAL RSS RUN
+------------------------- */
 
 app.post(
   "/api/rss/run",
   async (req, res) => {
+
     try {
+
       const result =
         await runRssEngine(
           pool
@@ -208,7 +289,9 @@ app.post(
         success: true,
         result,
       });
+
     } catch (error) {
+
       console.error(
         "❌ RSS run error:",
         error.message
@@ -223,16 +306,17 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| FULL AUTOMATION MANUAL RUN
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   MANUAL AUTOMATION RUN
+------------------------- */
 
 app.post(
   "/api/automation/run",
   async (req, res) => {
+
     try {
+
       const result =
         await runNewsAutomation(
           pool
@@ -242,7 +326,9 @@ app.post(
         success: true,
         result,
       });
+
     } catch (error) {
+
       console.error(
         "❌ Automation run error:",
         error.message
@@ -257,43 +343,53 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| CRON AUTOMATION
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   SECURE VERCEL CRON
+------------------------- */
 
 app.get(
   "/api/automation/cron",
   async (req, res) => {
+
     try {
+
       const verification =
         verifyCronRequest(
           req
         );
 
+
       if (
         !verification.valid
       ) {
+
         return res.status(401).json({
           success: false,
+
           error:
             verification.reason,
         });
       }
+
 
       const result =
         await runNewsAutomation(
           pool
         );
 
+
       res.json({
         success: true,
+
         source:
           "cron",
+
         result,
       });
+
     } catch (error) {
+
       console.error(
         "❌ Cron automation error:",
         error.message
@@ -301,6 +397,7 @@ app.get(
 
       res.status(500).json({
         success: false,
+
         error:
           error.message,
       });
@@ -308,61 +405,71 @@ app.get(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| AUTOMATION STATUS
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   AUTOMATION STATUS
+------------------------- */
 
 app.get(
   "/api/automation/status",
   (req, res) => {
+
     res.json({
       success: true,
-      enabled: true,
+
+      enabled:
+        true,
+
       cronConfigured:
         isCronConfigured(),
+
       timestamp:
         new Date().toISOString(),
     });
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| SCHEDULER STATUS
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   SCHEDULER STATUS
+------------------------- */
 
 app.get(
   "/api/scheduler/status",
   (req, res) => {
+
     res.json({
       success: true,
+
       scheduler:
         getSchedulerStatus(),
     });
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| STOP SCHEDULER
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   SCHEDULER STOP
+------------------------- */
 
 app.post(
   "/api/scheduler/stop",
   (req, res) => {
+
     try {
+
       res.json({
         success: true,
+
         message:
           "Scheduler stop request received.",
       });
+
     } catch (error) {
+
       res.status(500).json({
         success: false,
+
         error:
           error.message,
       });
@@ -370,15 +477,15 @@ app.post(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| PUSH STATUS
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   SYSTEM STATUS
+------------------------- */
 
 app.get(
   "/api/system/status",
   (req, res) => {
+
     res.json({
       success: true,
 
@@ -402,38 +509,57 @@ app.get(
       push:
         isPushConfigured(),
 
+      analytics:
+        true,
+
+      dashboard:
+        true,
+
+      copyrightProtection:
+        true,
+
+      sourceHealth:
+        true,
+
+      automationHistory:
+        true,
+
+      sourcePolicy:
+        true,
+
       timestamp:
         new Date().toISOString(),
     });
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| 404 API HANDLER
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   UNKNOWN API ROUTES
+------------------------- */
 
 app.use(
   "/api",
   (req, res) => {
+
     res.status(404).json({
       success: false,
+
       error:
         "API endpoint not found.",
     });
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| FRONTEND FALLBACK
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   WEBSITE FALLBACK
+------------------------- */
 
 app.get(
   "*",
   (req, res) => {
+
     res.sendFile(
       path.join(
         __dirname,
@@ -444,29 +570,34 @@ app.get(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| SERVER START
-|--------------------------------------------------------------------------
-*/
+
+/* -------------------------
+   START SERVER
+------------------------- */
 
 async function startServer() {
+
   try {
+
     await pool.query(
       "SELECT 1"
     );
+
 
     console.log(
       "✅ Database Connected"
     );
 
+
     console.log(
       "🤖 Automation Enabled"
     );
 
+
     console.log(
       "⏰ Scheduler Enabled"
     );
+
 
     console.log(
       `🔐 Cron Security ${
@@ -476,25 +607,31 @@ async function startServer() {
       }`
     );
 
+
     console.log(
       "⚖️ Copyright Protection Enabled"
     );
+
 
     console.log(
       "📋 Takedown System Enabled"
     );
 
+
     console.log(
       "📡 Source Health Enabled"
     );
+
 
     console.log(
       "📊 Automation History Enabled"
     );
 
+
     console.log(
       "🛡️ Source Policy Enabled"
     );
+
 
     console.log(
       `🔔 Push Notifications ${
@@ -504,31 +641,45 @@ async function startServer() {
       }`
     );
 
+
     console.log(
       "👑 CEO Dashboard Enabled"
     );
+
+
+    console.log(
+      "📈 Analytics Enabled"
+    );
+
 
     app.listen(
       PORT,
       "0.0.0.0",
       () => {
+
         console.log(
           `🚀 ZEESHAN NEWS AI running on port ${PORT}`
         );
       }
     );
 
+
     try {
+
       startScheduler(
         pool
       );
+
     } catch (error) {
+
       console.error(
         "❌ Scheduler start error:",
         error.message
       );
     }
+
   } catch (error) {
+
     console.error(
       "❌ Database connection failed:",
       error.message
@@ -538,6 +689,8 @@ async function startServer() {
   }
 }
 
+
 startServer();
+
 
 export default app;
