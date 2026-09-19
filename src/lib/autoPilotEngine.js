@@ -1,883 +1,404 @@
 import {
   evaluateContentSafety,
-  canAutoPublish,
-  requiresCEOApproval,
-  isContentBlocked,
 } from "./contentSafetyEngine.js";
 
 import {
   createPublishingSchedule,
-  calculateNextPublishTime,
 } from "./publishingScheduler.js";
 
+import {
+  getAutoPilotControl,
+} from "./autoPilotStore.js";
 
-const AUTO_PILOT_MODES = {
+export const AUTO_PILOT_MODES = {
   OFF: "off",
   ASSISTED: "assisted",
   AUTO: "auto",
 };
 
-
-const PUBLISHING_STATUSES = {
+export const AUTO_PILOT_STATUSES = {
   READY: "ready",
   SCHEDULED: "scheduled",
   CEO_APPROVAL: "ceo_approval",
   HELD: "held",
   BLOCKED: "blocked",
-  PENDING: "pending",
 };
 
-
-function normalizeText(
-  value,
-  maxLength = 10000
-) {
-  if (
-    value === undefined ||
-    value === null
-  ) {
-    return "";
-  }
-
-  return String(value)
+function normalizeMode(mode) {
+  const value = String(
+    mode || AUTO_PILOT_MODES.ASSISTED
+  )
     .trim()
-    .slice(0, maxLength);
-}
-
-
-function normalizeMode(
-  value
-) {
-  const mode =
-    String(
-      value ||
-        AUTO_PILOT_MODES.ASSISTED
-    )
-      .trim()
-      .toLowerCase();
+    .toLowerCase();
 
   if (
-    !Object.values(
-      AUTO_PILOT_MODES
-    ).includes(mode)
+    !Object.values(AUTO_PILOT_MODES).includes(
+      value
+    )
   ) {
     return AUTO_PILOT_MODES.ASSISTED;
   }
 
-  return mode;
+  return value;
 }
 
+function normalizePlatform(platform) {
+  return String(platform || "")
+    .trim()
+    .toLowerCase();
+}
 
-function normalizeBoolean(
-  value,
-  fallback = false
-) {
-  if (
-    typeof value ===
-    "boolean"
-  ) {
-    return value;
+function normalizeRegion(region) {
+  return String(region || "worldwide")
+    .trim()
+    .toLowerCase();
+}
+
+export async function evaluateAutoPilot({
+  db = null,
+  title = "",
+  content = "",
+  summary = "",
+  category = "",
+  source = "",
+  sourceUrl = "",
+  platform = "website",
+  region = "worldwide",
+  mode = null,
+  timezone = null,
+  hasAttribution = true,
+  exactSourceReproduction = false,
+  duplicateMatch = false,
+} = {}) {
+  let control = {
+    mode: normalizeMode(mode),
+    emergency_stop: false,
+    stop_reason: null,
+    stopped_by: null,
+    stopped_at: null,
+  };
+
+  if (db) {
+    try {
+      control =
+        await getAutoPilotControl(db);
+    } catch (error) {
+      console.error(
+        "⚠️ Auto-Pilot control read failed:",
+        error.message
+      );
+    }
   }
 
-  return fallback;
-}
-
-
-function normalizeRegion(
-  value
-) {
-  return (
-    normalizeText(
-      value,
-      200
-    ) ||
-    "Worldwide"
+  const activeMode = normalizeMode(
+    mode || control.mode
   );
-}
 
-
-function normalizePlatform(
-  value
-) {
-  return (
-    normalizeText(
-      value,
-      100
-    )
-      .toLowerCase() ||
-    "website"
+  const emergencyStop = Boolean(
+    control.emergency_stop
   );
-}
 
+  const safety = evaluateContentSafety({
+    title,
+    content,
+    summary,
+    category,
+    source,
+    sourceUrl,
+    platform,
+    hasAttribution,
+    exactSourceReproduction,
+    duplicateMatch,
+  });
 
-function isEmergencyStopEnabled(
-  settings = {}
-) {
-  return Boolean(
-    settings.emergencyStop ===
-      true
-  );
-}
-
-
-function isAutoPublishAllowedBySettings(
-  settings = {}
-) {
-  if (
-    settings.autoPublish ===
-    false
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-
-function isPlatformEnabled(
-  platform,
-  settings = {}
-) {
-  const disabledPlatforms =
-    Array.isArray(
-      settings.disabledPlatforms
-    )
-      ? settings.disabledPlatforms
-      : [];
-
-  return !disabledPlatforms
-    .map(
-      (item) =>
-        String(
-          item
-        ).toLowerCase()
-    )
-    .includes(
-      platform.toLowerCase()
-    );
-}
-
-
-function getDecisionReason(
-  {
-    mode,
-    safety,
-    emergencyStop,
-    platformEnabled,
-    autoPublishEnabled,
-  }
-) {
-  if (
-    emergencyStop
-  ) {
-    return "Emergency stop is enabled.";
-  }
-
-  if (
-    !platformEnabled
-  ) {
-    return "Publishing platform is disabled.";
-  }
-
-  if (
-    mode ===
-    AUTO_PILOT_MODES.OFF
-  ) {
-    return "Auto-Pilot is disabled.";
-  }
-
-  if (
-    !autoPublishEnabled
-  ) {
-    return "Automatic publishing is disabled by CEO settings.";
-  }
-
-  if (
-    isContentBlocked(
-      safety
-    )
-  ) {
-    return (
-      safety.reason ||
-      "Content is blocked by the safety engine."
-    );
-  }
-
-  if (
-    requiresCEOApproval(
-      safety
-    )
-  ) {
-    return (
-      safety.reason ||
-      "CEO approval is required."
-    );
-  }
-
-  if (
-    canAutoPublish(
-      safety
-    )
-  ) {
-    return "Content passed safety checks and is eligible for Auto-Pilot.";
-  }
-
-  return "Content requires manual review.";
-}
-
-
-function determinePublishingStatus(
-  {
-    mode,
-    safety,
-    emergencyStop,
-    platformEnabled,
-    autoPublishEnabled,
-  }
-) {
-  if (
-    emergencyStop
-  ) {
+  if (emergencyStop) {
     return {
-      status:
-        PUBLISHING_STATUSES.HELD,
-
-      decision:
-        "hold",
+      mode: activeMode,
+      status: AUTO_PILOT_STATUSES.HELD,
+      decision: "hold",
+      emergencyStop: true,
+      riskLevel:
+        safety.riskLevel || "high",
+      safety,
+      reason:
+        control.stop_reason ||
+        "Emergency stop is active",
+      nextStep:
+        "CEO must release the emergency stop before publishing can continue.",
+      schedule: null,
     };
   }
 
   if (
-    !platformEnabled
+    safety.decision === "hold" ||
+    safety.riskLevel === "high"
   ) {
     return {
-      status:
-        PUBLISHING_STATUSES.HELD,
-
-      decision:
-        "platform_disabled",
+      mode: activeMode,
+      status: AUTO_PILOT_STATUSES.HELD,
+      decision: "hold",
+      emergencyStop: false,
+      riskLevel:
+        safety.riskLevel || "high",
+      safety,
+      reason:
+        safety.reasons?.join("; ") ||
+        "Content requires safety review",
+      nextStep:
+        "Hold content for review before publishing.",
+      schedule: null,
     };
   }
 
   if (
-    mode ===
-    AUTO_PILOT_MODES.OFF
+    safety.decision === "ceo_approval" ||
+    safety.riskLevel === "medium"
   ) {
     return {
+      mode: activeMode,
       status:
-        PUBLISHING_STATUSES.PENDING,
-
-      decision:
-        "manual_mode",
+        AUTO_PILOT_STATUSES.CEO_APPROVAL,
+      decision: "ceo_approval",
+      emergencyStop: false,
+      riskLevel:
+        safety.riskLevel || "medium",
+      safety,
+      reason:
+        safety.reasons?.join("; ") ||
+        "CEO approval required",
+      nextStep:
+        "Send content to CEO Approval Queue.",
+      schedule: null,
     };
   }
 
   if (
-    !autoPublishEnabled
+    activeMode === AUTO_PILOT_MODES.OFF
   ) {
     return {
-      status:
-        PUBLISHING_STATUSES.CEO_APPROVAL,
-
-      decision:
-        "ceo_approval",
+      mode: activeMode,
+      status: AUTO_PILOT_STATUSES.READY,
+      decision: "manual",
+      emergencyStop: false,
+      riskLevel:
+        safety.riskLevel || "low",
+      safety,
+      reason:
+        "Auto-Pilot is disabled",
+      nextStep:
+        "Manual CEO action is required.",
+      schedule: null,
     };
   }
 
   if (
-    isContentBlocked(
-      safety
-    )
+    activeMode === AUTO_PILOT_MODES.ASSISTED
   ) {
     return {
+      mode: activeMode,
       status:
-        PUBLISHING_STATUSES.BLOCKED,
-
-      decision:
-        "blocked",
+        AUTO_PILOT_STATUSES.CEO_APPROVAL,
+      decision: "ceo_approval",
+      emergencyStop: false,
+      riskLevel:
+        safety.riskLevel || "low",
+      safety,
+      reason:
+        "Assisted mode requires CEO confirmation.",
+      nextStep:
+        "CEO reviews and approves the publishing action.",
+      schedule: null,
     };
   }
 
   if (
-    requiresCEOApproval(
-      safety
-    )
+    activeMode === AUTO_PILOT_MODES.AUTO
   ) {
+    let schedule = null;
+
+    try {
+      schedule = createPublishingSchedule({
+        platform:
+          normalizePlatform(platform),
+        region:
+          normalizeRegion(region),
+        timezone,
+      });
+    } catch (error) {
+      return {
+        mode: activeMode,
+        status:
+          AUTO_PILOT_STATUSES.HELD,
+        decision: "hold",
+        emergencyStop: false,
+        riskLevel:
+          safety.riskLevel || "medium",
+        safety,
+        reason:
+          `Publishing schedule error: ${error.message}`,
+        nextStep:
+          "Review scheduling configuration.",
+        schedule: null,
+      };
+    }
+
     return {
+      mode: activeMode,
       status:
-        PUBLISHING_STATUSES.CEO_APPROVAL,
-
-      decision:
-        "ceo_approval",
-    };
-  }
-
-  if (
-    canAutoPublish(
-      safety
-    )
-  ) {
-    return {
-      status:
-        PUBLISHING_STATUSES.SCHEDULED,
-
-      decision:
-        "auto_publish",
+        AUTO_PILOT_STATUSES.SCHEDULED,
+      decision: "auto_publish",
+      emergencyStop: false,
+      riskLevel:
+        safety.riskLevel || "low",
+      safety,
+      reason:
+        "Low-risk content approved for Auto-Pilot scheduling.",
+      nextStep:
+        "Publish automatically at the scheduled time.",
+      schedule,
     };
   }
 
   return {
-    status:
-      PUBLISHING_STATUSES.CEO_APPROVAL,
-
-    decision:
-      "ceo_approval",
-  };
-}
-
-
-export function evaluateAutoPilot(
-  {
-    title = "",
-    content = "",
-    headline = "",
-    summary = "",
-    category = "general",
-    source = "Unknown",
-    thumbnailText = "",
-    platform = "website",
-    region = "Worldwide",
-    originalContent = "",
-    previousContent = [],
-    mode = AUTO_PILOT_MODES.ASSISTED,
-    settings = {},
-  } = {}
-) {
-  const normalizedMode =
-    normalizeMode(
-      mode
-    );
-
-  const normalizedPlatform =
-    normalizePlatform(
-      platform
-    );
-
-  const normalizedRegion =
-    normalizeRegion(
-      region
-    );
-
-  const emergencyStop =
-    isEmergencyStopEnabled(
-      settings
-    );
-
-  const autoPublishEnabled =
-    isAutoPublishAllowedBySettings(
-      settings
-    );
-
-  const platformEnabled =
-    isPlatformEnabled(
-      normalizedPlatform,
-      settings
-    );
-
-
-  const safety =
-    evaluateContentSafety({
-      title:
-        normalizeText(
-          title,
-          1000
-        ),
-
-      content:
-        normalizeText(
-          content,
-          10000
-        ),
-
-      headline:
-        normalizeText(
-          headline,
-          1000
-        ),
-
-      summary:
-        normalizeText(
-          summary,
-          5000
-        ),
-
-      category,
-
-      source,
-
-      thumbnailText:
-        normalizeText(
-          thumbnailText,
-          300
-        ),
-
-      platform:
-        normalizedPlatform,
-
-      originalContent,
-
-      previousContent,
-    });
-
-
-  const decision =
-    determinePublishingStatus({
-      mode:
-        normalizedMode,
-
-      safety,
-
-      emergencyStop,
-
-      platformEnabled,
-
-      autoPublishEnabled,
-    });
-
-
-  const reason =
-    getDecisionReason({
-      mode:
-        normalizedMode,
-
-      safety,
-
-      emergencyStop,
-
-      platformEnabled,
-
-      autoPublishEnabled,
-    });
-
-
-  return {
-    success: true,
-
-    mode:
-      normalizedMode,
-
-    platform:
-      normalizedPlatform,
-
-    region:
-      normalizedRegion,
-
-    emergencyStop,
-
-    platformEnabled,
-
-    autoPublishEnabled,
-
+    mode: activeMode,
+    status: AUTO_PILOT_STATUSES.READY,
+    decision: "manual",
+    emergencyStop: false,
+    riskLevel:
+      safety.riskLevel || "low",
     safety,
-
-    status:
-      decision.status,
-
-    decision:
-      decision.decision,
-
-    reason,
-
-    autoPublish:
-      decision.decision ===
-      "auto_publish",
-
-    requiresCEOApproval:
-      decision.decision ===
-      "ceo_approval",
-
-    held:
-      decision.status ===
-      PUBLISHING_STATUSES.HELD,
-
-    blocked:
-      decision.status ===
-      PUBLISHING_STATUSES.BLOCKED,
-
-    evaluatedAt:
-      new Date().toISOString(),
+    reason:
+      "No automatic action selected.",
+    nextStep:
+      "CEO review required.",
+    schedule: null,
   };
 }
 
-
-export function createAutoPilotSchedule(
-  {
-    contentId = null,
-    title = "",
-    platform = "website",
-    region = "Worldwide",
-    timezone = null,
-    mode = AUTO_PILOT_MODES.ASSISTED,
-    settings = {},
-    scheduledFor = null,
-    publishWindow = null,
-    safetyInput = {},
-  } = {}
-) {
+export async function createAutoPilotSchedule({
+  db = null,
+  title = "",
+  content = "",
+  summary = "",
+  category = "",
+  source = "",
+  sourceUrl = "",
+  platform = "website",
+  region = "worldwide",
+  mode = null,
+  timezone = null,
+  hasAttribution = true,
+  exactSourceReproduction = false,
+  duplicateMatch = false,
+} = {}) {
   const evaluation =
-    evaluateAutoPilot({
-      title:
-        title ||
-        safetyInput.title,
-
-      content:
-        safetyInput.content,
-
-      headline:
-        safetyInput.headline,
-
-      summary:
-        safetyInput.summary,
-
-      category:
-        safetyInput.category,
-
-      source:
-        safetyInput.source,
-
-      thumbnailText:
-        safetyInput.thumbnailText,
-
-      platform,
-
-      region,
-
-      originalContent:
-        safetyInput.originalContent,
-
-      previousContent:
-        safetyInput.previousContent,
-
-      mode,
-
-      settings,
-    });
-
-
-  if (
-    evaluation.blocked
-  ) {
-    return {
-      success: true,
-
-      created: false,
-
-      status:
-        PUBLISHING_STATUSES.BLOCKED,
-
-      evaluation,
-    };
-  }
-
-
-  if (
-    evaluation.held
-  ) {
-    return {
-      success: true,
-
-      created: false,
-
-      status:
-        PUBLISHING_STATUSES.HELD,
-
-      evaluation,
-    };
-  }
-
-
-  if (
-    evaluation.requiresCEOApproval
-  ) {
-    return {
-      success: true,
-
-      created: false,
-
-      status:
-        PUBLISHING_STATUSES.CEO_APPROVAL,
-
-      evaluation,
-    };
-  }
-
-
-  if (
-    evaluation.decision !==
-    "auto_publish"
-  ) {
-    return {
-      success: true,
-
-      created: false,
-
-      status:
-        PUBLISHING_STATUSES.PENDING,
-
-      evaluation,
-    };
-  }
-
-
-  const schedule =
-    createPublishingSchedule({
-      contentId,
-
+    await evaluateAutoPilot({
+      db,
       title,
-
+      content,
+      summary,
+      category,
+      source,
+      sourceUrl,
       platform,
-
       region,
-
+      mode,
       timezone,
-
-      scheduledFor,
-
-      publishWindow,
-
-      autoPublish:
-        true,
+      hasAttribution,
+      exactSourceReproduction,
+      duplicateMatch,
     });
-
 
   return {
     success: true,
-
-    created: true,
-
-    status:
-      PUBLISHING_STATUSES.SCHEDULED,
-
-    evaluation,
-
-    schedule,
+    ...evaluation,
   };
 }
-
 
 export function getNextAutoPublishTime(
-  {
-    platform = "website",
-    region = "Worldwide",
-    timezone = null,
-    fromDate = new Date(),
-    publishWindow = null,
-  } = {}
+  schedule
 ) {
-  return calculateNextPublishTime({
-    fromDate,
-
-    platform,
-
-    region,
-
-    timezone,
-
-    publishWindow,
-  });
-}
-
-
-export function shouldAutoPublish(
-  {
-    safetyResult,
-    mode = AUTO_PILOT_MODES.AUTO,
-    settings = {},
-  } = {}
-) {
-  const normalizedMode =
-    normalizeMode(
-      mode
-    );
-
-  if (
-    normalizedMode !==
-    AUTO_PILOT_MODES.AUTO
-  ) {
-    return false;
-  }
-
-  if (
-    isEmergencyStopEnabled(
-      settings
-    )
-  ) {
-    return false;
-  }
-
-  if (
-    !isAutoPublishAllowedBySettings(
-      settings
-    )
-  ) {
-    return false;
-  }
-
-  return canAutoPublish(
-    safetyResult
+  return (
+    schedule?.nextPublishAt ||
+    schedule?.scheduledAt ||
+    null
   );
 }
 
-
-export function getAutoPilotStatus(
-  {
-    mode = AUTO_PILOT_MODES.ASSISTED,
-    settings = {},
-  } = {}
+export async function shouldAutoPublish(
+  options = {}
 ) {
-  const normalizedMode =
-    normalizeMode(
-      mode
-    );
+  const result =
+    await evaluateAutoPilot(options);
 
-  const emergencyStop =
-    isEmergencyStopEnabled(
-      settings
-    );
-
-  const autoPublishEnabled =
-    isAutoPublishAllowedBySettings(
-      settings
-    );
-
-
-  let status =
-    "assisted";
-
-  if (
-    emergencyStop
-  ) {
-    status =
-      "emergency_stop";
-  } else if (
-    normalizedMode ===
-    AUTO_PILOT_MODES.OFF
-  ) {
-    status =
-      "off";
-  } else if (
-    normalizedMode ===
-      AUTO_PILOT_MODES.AUTO &&
-    autoPublishEnabled
-  ) {
-    status =
-      "auto";
-  }
-
-
-  return {
-    success: true,
-
-    mode:
-      normalizedMode,
-
-    status,
-
-    autoPublishEnabled,
-
-    emergencyStop,
-
-    description:
-      emergencyStop
-        ? "Auto-Pilot is stopped by the CEO emergency switch."
-        : status === "auto"
-        ? "Low-risk content may be automatically scheduled for publishing."
-        : status === "off"
-        ? "Auto-Pilot is disabled."
-        : "Auto-Pilot prepares content but requires CEO control for publishing.",
-
-    updatedAt:
-      new Date().toISOString(),
-  };
+  return (
+    result.decision === "auto_publish" &&
+    result.status ===
+      AUTO_PILOT_STATUSES.SCHEDULED &&
+    result.emergencyStop === false
+  );
 }
 
+export function getAutoPilotStatus() {
+  return {
+    name: "ZEESHAN NEWS AI Auto-Pilot",
+    status: "ready",
+    modes: Object.values(
+      AUTO_PILOT_MODES
+    ),
+    statuses: Object.values(
+      AUTO_PILOT_STATUSES
+    ),
+    humanControl: true,
+    emergencyStop: true,
+  };
+}
 
 export function createCEOApprovalItem(
-  {
-    contentId = null,
-    title = "",
-    platform = "website",
-    region = "Worldwide",
-    safety = null,
-    reason = "CEO approval required.",
-  } = {}
+  data = {}
 ) {
   return {
-    success: true,
-
-    id:
-      `approval-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
-
-    contentId,
-
-    title:
-      normalizeText(
-        title,
-        1000
-      ),
-
+    articleId:
+      data.articleId || null,
     platform:
-      normalizePlatform(
-        platform
-      ),
-
+      data.platform || "website",
     region:
-      normalizeRegion(
-        region
-      ),
-
-    status:
-      PUBLISHING_STATUSES.CEO_APPROVAL,
-
-    reason,
-
-    safety,
-
-    createdAt:
-      new Date().toISOString(),
+      data.region || "worldwide",
+    title:
+      data.title || "",
+    content:
+      data.content || "",
+    decision:
+      data.decision || "ceo_approval",
+    riskLevel:
+      data.riskLevel || "medium",
+    safetyResult:
+      data.safetyResult || null,
+    scheduleData:
+      data.scheduleData || null,
+    status: "pending",
   };
 }
-
 
 export function createEmergencyStopState(
-  enabled = true
+  reason = "Emergency stop activated"
 ) {
   return {
-    emergencyStop:
-      Boolean(enabled),
-
-    changedAt:
+    emergencyStop: true,
+    reason,
+    stoppedAt:
       new Date().toISOString(),
-
-    effect:
-      enabled
-        ? "All Auto-Pilot publishing decisions are held until the CEO disables the emergency stop."
-        : "Auto-Pilot may operate according to configured safety and publishing rules.",
   };
 }
-
 
 export function getAutoPilotModes() {
-  return {
-    ...AUTO_PILOT_MODES,
-  };
+  return Object.values(
+    AUTO_PILOT_MODES
+  );
 }
 
-
-export function getPublishingStatuses() {
-  return {
-    ...PUBLISHING_STATUSES,
-  };
+export function getAutoPilotStatuses() {
+  return Object.values(
+    AUTO_PILOT_STATUSES
+  );
 }
