@@ -1,410 +1,239 @@
 import webpush, {
   configureWebPush,
-  getVapidPublicKey,
+  isPushConfigured,
 } from "./pushConfig.js";
 
 import {
   getActivePushSubscriptions,
   markPushNotified,
+  disablePushSubscription,
 } from "./pushSubscriptions.js";
 
-
-function normalizeValue(
-  value,
-  fallback = ""
-) {
-  return String(
-    value ?? fallback
-  ).trim();
-}
-
-
-function normalizeFrequency(
-  value
-) {
-  const number =
-    Number(value);
-
-  if (
-    !Number.isInteger(number) ||
-    number < 1
-  ) {
-    return 10;
-  }
-
-  return Math.min(
-    number,
-    50
-  );
-}
-
-
-function buildPayload(
-  notification = {}
-) {
-  const title =
-    normalizeValue(
-      notification.title,
-      "ZEESHAN NEWS AI"
-    );
-
-  const body =
-    normalizeValue(
-      notification.body,
-      "New news update is available."
-    );
-
-  const url =
-    normalizeValue(
-      notification.url,
-      "/"
-    );
-
-  return JSON.stringify({
-    title,
-
-    body,
-
-    url,
-
-    icon:
-      "/icon-192.png",
-
-    badge:
-      "/icon-192.png",
-
-    timestamp:
-      Date.now(),
-
-    tag:
-      notification.tag ||
-      "zeeshan-news",
-
-    data: {
-      url,
-    },
-  });
-}
-
-
-function isNotificationAllowed(
-  subscription,
-  type
-) {
-  if (
-    subscription.enabled !== true
-  ) {
-    return false;
-  }
-
-  if (
-    type === "breaking" &&
-    subscription.breaking_news !== true
-  ) {
-    return false;
-  }
-
-  if (
-    type === "trending" &&
-    subscription.trending_news !== true
-  ) {
-    return false;
-  }
-
-  return true;
-}
-
-
-function isFrequencyAllowed(
+function canSendByFrequency(
   subscription
 ) {
-  const frequencyLimit =
-    normalizeFrequency(
-      subscription.frequency_limit
-    );
+  const limit = Number(
+    subscription.frequency_limit ?? 10
+  );
 
-  if (
-    !subscription.last_notified_at
-  ) {
+  if (limit <= 0) {
+    return true;
+  }
+
+  if (!subscription.last_notified_at) {
     return true;
   }
 
   const lastNotified =
     new Date(
       subscription.last_notified_at
-    );
+    ).getTime();
 
-  if (
-    Number.isNaN(
-      lastNotified.getTime()
-    )
-  ) {
+  if (Number.isNaN(lastNotified)) {
     return true;
   }
 
-  /*
-   * frequency_limit means
-   * maximum notifications per hour.
-   *
-   * This prevents accidental
-   * notification spam.
-   */
+  const now = Date.now();
 
   const minimumInterval =
-    60 * 60 * 1000 /
-    frequencyLimit;
-
-  const elapsed =
-    Date.now() -
-    lastNotified.getTime();
+    (24 * 60 * 60 * 1000) / limit;
 
   return (
-    elapsed >=
+    now - lastNotified >=
     minimumInterval
   );
 }
 
+function shouldReceiveNotification(
+  subscription,
+  type
+) {
+  if (!subscription.enabled) {
+    return false;
+  }
+
+  if (
+    type === "breaking" &&
+    !subscription.breaking_news
+  ) {
+    return false;
+  }
+
+  if (
+    type === "trending" &&
+    !subscription.trending_news
+  ) {
+    return false;
+  }
+
+  return canSendByFrequency(
+    subscription
+  );
+}
 
 export async function sendPushNotification(
   db,
-  notification = {},
+  payload = {},
   type = "general"
 ) {
-  if (!db) {
+  if (!isPushConfigured()) {
     throw new Error(
-      "Database connection is required"
+      "Web Push is not configured. Check VAPID environment variables."
     );
   }
-
-  /*
-   * Configure web-push
-   * only when an actual
-   * notification is being sent.
-   */
 
   configureWebPush();
-
-  const publicKey =
-    getVapidPublicKey();
-
-  if (!publicKey) {
-    throw new Error(
-      "VAPID public key is not configured"
-    );
-  }
 
   const subscriptions =
     await getActivePushSubscriptions(
       db
     );
 
-  const payload =
-    buildPayload(
-      notification
-    );
+  let sent = 0;
+  let skipped = 0;
+  let failed = 0;
+  let disabled = 0;
 
-  const report = {
-    success: true,
-
-    type,
-
-    total:
-      subscriptions.length,
-
-    sent: 0,
-
-    skipped: 0,
-
-    frequencyLimited: 0,
-
-    removed: 0,
-
-    failed: 0,
-
-    errors: [],
-  };
-
-
-  for (
-    const subscription of subscriptions
-  ) {
-
+  for (const subscription of subscriptions) {
     if (
-      !isNotificationAllowed(
+      !shouldReceiveNotification(
         subscription,
         type
       )
     ) {
-      report.skipped++;
-
+      skipped++;
       continue;
     }
 
+    const notification = {
+      title:
+        payload.title ||
+        "ZEESHAN NEWS AI",
 
-    if (
-      !isFrequencyAllowed(
-        subscription
-      )
-    ) {
-      report.frequencyLimited++;
+      body:
+        payload.body ||
+        "New news update is available.",
 
-      continue;
-    }
+      icon:
+        payload.icon ||
+        "/icon-192.png",
 
+      badge:
+        payload.badge ||
+        "/icon-192.png",
 
-    const pushSubscription = {
-      endpoint:
-        subscription.endpoint,
+      timestamp:
+        payload.timestamp ||
+        Date.now(),
 
-      keys: {
-        p256dh:
-          subscription.p256dh,
+      tag:
+        payload.tag ||
+        `zeeshan-news-${type}`,
 
-        auth:
-          subscription.auth,
-      },
+      url:
+        payload.url ||
+        "/",
     };
 
-
     try {
-
       await webpush.sendNotification(
-        pushSubscription,
-        payload
-      );
+        {
+          endpoint:
+            subscription.endpoint,
 
+          keys: {
+            p256dh:
+              subscription.p256dh,
+
+            auth:
+              subscription.auth,
+          },
+        },
+        JSON.stringify(
+          notification
+        )
+      );
 
       await markPushNotified(
         db,
-        subscription.id
+        subscription.endpoint
       );
 
-
-      report.sent++;
-
-
+      sent++;
     } catch (error) {
-
-      report.failed++;
-
+      failed++;
 
       const statusCode =
-        Number(
-          error?.statusCode
-        );
+        error?.statusCode;
 
-
-      const errorMessage =
-        normalizeValue(
-          error?.message,
-          "Push notification failed"
-        ).slice(
-          0,
-          500
-        );
-
-
-      /*
-       * Browser push subscriptions
-       * returning 404/410 are normally
-       * no longer valid.
-       */
+      console.error(
+        "❌ Push notification failed:",
+        statusCode,
+        error.message
+      );
 
       if (
         statusCode === 404 ||
         statusCode === 410
       ) {
-
         try {
-
-          await db.query(
-            `
-            UPDATE push_subscriptions
-            SET
-              enabled = FALSE,
-              updated_at =
-                CURRENT_TIMESTAMP
-            WHERE
-              id = $1
-            `,
-            [
-              subscription.id,
-            ]
+          await disablePushSubscription(
+            db,
+            subscription.endpoint
           );
 
-
-          report.removed++;
-
-
-        } catch (
-          cleanupError
-        ) {
-
-          report.errors.push({
-            id:
-              subscription.id,
-
-            error:
-              cleanupError.message,
-          });
-
+          disabled++;
+        } catch (disableError) {
+          console.error(
+            "❌ Failed to disable dead subscription:",
+            disableError.message
+          );
         }
-
-
-      } else {
-
-        report.errors.push({
-          id:
-            subscription.id,
-
-          error:
-            errorMessage,
-        });
-
       }
     }
   }
 
-
-  return report;
+  return {
+    success: true,
+    type,
+    totalSubscriptions:
+      subscriptions.length,
+    sent,
+    skipped,
+    failed,
+    disabled,
+  };
 }
 
-
-export async function sendBreakingNewsNotification(
+export async function sendBreakingNews(
   db,
-  title,
-  body,
-  url = "/"
+  payload = {}
 ) {
   return sendPushNotification(
     db,
-    {
-      title,
-      body,
-      url,
-      tag:
-        "zeeshan-breaking-news",
-    },
+    payload,
     "breaking"
   );
 }
 
-
-export async function sendTrendingNewsNotification(
+export async function sendTrendingNews(
   db,
-  title,
-  body,
-  url = "/"
+  payload = {}
 ) {
   return sendPushNotification(
     db,
-    {
-      title,
-      body,
-      url,
-      tag:
-        "zeeshan-trending-news",
-    },
+    payload,
     "trending"
+  );
+}
+
+export async function sendGeneralNews(
+  db,
+  payload = {}
+) {
+  return sendPushNotification(
+    db,
+    payload,
+    "general"
   );
 }
