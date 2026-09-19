@@ -1,490 +1,261 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
 
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
-  >
+  />
 
-  <meta
-    name="theme-color"
-    content="#05070d"
-  >
-
-  <title>
-    ZEESHAN NEWS AI — CEO Command Center
-  </title>
+  <title>ZEESHAN NEWS AI — CEO Command Center</title>
 
   <style>
     * {
       box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    :root {
-      --bg: #05070d;
-      --panel: #0b101a;
-      --panel-2: #0f1623;
-      --border: #1d2939;
-      --text: #eef4ff;
-      --muted: #8d9bb0;
-      --accent: #38bdf8;
-      --green: #22c55e;
-      --yellow: #f59e0b;
-      --red: #ef4444;
     }
 
     body {
+      margin: 0;
       min-height: 100vh;
       font-family:
-        Inter,
-        system-ui,
-        -apple-system,
-        BlinkMacSystemFont,
-        "Segoe UI",
+        Arial,
+        Helvetica,
         sans-serif;
-
-      color: var(--text);
 
       background:
         linear-gradient(
-          rgba(56, 189, 248, 0.025) 1px,
+          rgba(0, 255, 200, 0.025) 1px,
           transparent 1px
         ),
         linear-gradient(
           90deg,
-          rgba(56, 189, 248, 0.025) 1px,
+          rgba(0, 255, 200, 0.025) 1px,
           transparent 1px
         ),
-        var(--bg);
+        #05070a;
 
-      background-size: 32px 32px;
-    }
+      background-size:
+        32px 32px;
 
-    button {
-      font: inherit;
+      color: #e8f7f5;
     }
 
     .container {
-      width: min(1400px, 100%);
+      width: 100%;
+      max-width: 1200px;
       margin: 0 auto;
       padding: 18px;
     }
 
-    /* =========================
-       HEADER
-    ========================= */
-
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-
-      padding: 18px 20px;
-      margin-bottom: 18px;
-
-      background: rgba(11, 16, 26, 0.92);
-      border: 1px solid var(--border);
-      border-radius: 18px;
-
-      backdrop-filter: blur(16px);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .logo {
-      width: 48px;
-      height: 48px;
-
-      display: grid;
-      place-items: center;
-
-      border: 1px solid rgba(56, 189, 248, 0.35);
-      border-radius: 14px;
+    .header {
+      border: 1px solid
+        rgba(0, 255, 200, 0.2);
 
       background:
-        linear-gradient(
-          135deg,
-          rgba(56, 189, 248, 0.15),
-          rgba(99, 102, 241, 0.08)
-        );
+        rgba(8, 14, 18, 0.88);
 
-      color: var(--accent);
-      font-weight: 900;
-      font-size: 18px;
-    }
+      backdrop-filter: blur(12px);
 
-    .brand h1 {
-      font-size: 20px;
-      letter-spacing: 0.5px;
-    }
-
-    .brand p {
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .system-status {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      padding: 9px 12px;
-
-      border: 1px solid rgba(34, 197, 94, 0.25);
-      border-radius: 999px;
-
-      color: #86efac;
-      background: rgba(34, 197, 94, 0.08);
-
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 12px var(--green);
-    }
-
-    /* =========================
-       SECTION
-    ========================= */
-
-    .section {
-      margin-top: 18px;
-
-      padding: 18px;
-
-      background: rgba(11, 16, 26, 0.88);
-      border: 1px solid var(--border);
       border-radius: 18px;
 
-      backdrop-filter: blur(14px);
-    }
+      padding: 20px;
 
-    .section-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-
-      gap: 12px;
       margin-bottom: 16px;
     }
 
-    .section-header h2 {
-      font-size: 16px;
-      letter-spacing: 0.3px;
+    .brand {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 1px;
     }
 
-    .section-header span {
-      color: var(--muted);
-      font-size: 11px;
+    .subtitle {
+      margin-top: 6px;
+      color: #8ba5a1;
+      font-size: 13px;
     }
-
-    /* =========================
-       CARDS
-    ========================= */
 
     .grid {
       display: grid;
-      gap: 12px;
-    }
 
-    .overview-grid {
       grid-template-columns:
-        repeat(4, minmax(0, 1fr));
-    }
+        repeat(
+          auto-fit,
+          minmax(280px, 1fr)
+        );
 
-    .analytics-grid {
-      grid-template-columns:
-        repeat(4, minmax(0, 1fr));
+      gap: 16px;
     }
 
     .card {
-      min-width: 0;
-
-      padding: 16px;
+      border: 1px solid
+        rgba(0, 255, 200, 0.14);
 
       background:
-        linear-gradient(
-          145deg,
-          rgba(255,255,255,0.025),
-          rgba(255,255,255,0.008)
-        );
+        rgba(8, 14, 18, 0.9);
 
-      border: 1px solid var(--border);
-      border-radius: 14px;
+      border-radius: 18px;
+
+      padding: 18px;
+
+      box-shadow:
+        0 10px 40px
+        rgba(0, 0, 0, 0.28);
     }
 
-    .card-label {
-      color: var(--muted);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
+    .card h2 {
+      margin: 0 0 12px;
+
+      font-size: 16px;
+
+      letter-spacing: 0.5px;
     }
 
-    .card-value {
-      margin-top: 8px;
+    .status-row {
+      display: flex;
 
-      font-size: 28px;
-      font-weight: 800;
+      justify-content: space-between;
 
-      color: var(--text);
+      gap: 12px;
+
+      padding: 10px 0;
+
+      border-bottom: 1px solid
+        rgba(255, 255, 255, 0.06);
+
+      font-size: 13px;
     }
 
-    .card-small {
-      margin-top: 5px;
-      color: var(--muted);
-      font-size: 11px;
+    .status-row:last-child {
+      border-bottom: 0;
     }
 
-    /* =========================
-       MODULES
-    ========================= */
+    .value {
+      font-weight: 700;
+    }
 
-    .module-grid {
+    .controls {
       display: grid;
 
       grid-template-columns:
-        repeat(6, minmax(0, 1fr));
+        repeat(3, 1fr);
 
-      gap: 10px;
-    }
-
-    .module {
-      padding: 14px;
-
-      border: 1px solid var(--border);
-      border-radius: 13px;
-
-      background: var(--panel-2);
-    }
-
-    .module-name {
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    .module-status {
-      margin-top: 7px;
-
-      font-size: 10px;
-      color: #86efac;
-    }
-
-    /* =========================
-       TABLE
-    ========================= */
-
-    .table-wrap {
-      overflow-x: auto;
-
-      border: 1px solid var(--border);
-      border-radius: 13px;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 600px;
-    }
-
-    th,
-    td {
-      padding: 11px 12px;
-
-      text-align: left;
-
-      border-bottom:
-        1px solid rgba(29, 41, 57, 0.8);
-
-      font-size: 12px;
-    }
-
-    th {
-      color: var(--muted);
-      font-size: 10px;
-
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-
-      background: rgba(255,255,255,0.015);
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    .muted {
-      color: var(--muted);
-    }
-
-    .positive {
-      color: #86efac;
-    }
-
-    .warning {
-      color: #fcd34d;
-    }
-
-    .danger {
-      color: #fca5a5;
-    }
-
-    /* =========================
-       BUTTONS
-    ========================= */
-
-    .actions {
-      display: flex;
       gap: 8px;
-      flex-wrap: wrap;
+
+      margin-top: 14px;
     }
 
-    .button {
-      border: 1px solid var(--border);
+    button {
+      width: 100%;
 
-      background: var(--panel-2);
-      color: var(--text);
+      border: 1px solid
+        rgba(0, 255, 200, 0.2);
+
+      background: #0b1519;
+
+      color: #dffcf8;
+
+      padding: 11px 8px;
 
       border-radius: 10px;
 
-      padding: 9px 13px;
+      font-weight: 700;
 
       cursor: pointer;
-
-      font-size: 12px;
-      font-weight: 700;
     }
 
-    .button:hover {
-      border-color: rgba(56, 189, 248, 0.45);
+    button:hover {
+      background: #102329;
     }
 
-    .button.primary {
+    .stop-button {
+      margin-top: 12px;
+
       border-color:
-        rgba(56, 189, 248, 0.35);
+        rgba(255, 80, 80, 0.35);
 
       background:
-        rgba(56, 189, 248, 0.08);
-
-      color: #bae6fd;
+        rgba(100, 20, 20, 0.35);
     }
 
-    /* =========================
-       EMPTY / ERROR
-    ========================= */
+    .release-button {
+      margin-top: 8px;
+    }
 
-    .empty {
-      padding: 18px;
+    .message {
+      margin-top: 12px;
 
-      color: var(--muted);
+      padding: 10px;
 
-      text-align: center;
+      border-radius: 10px;
+
+      background:
+        rgba(255, 255, 255, 0.04);
+
+      color: #a9c3bf;
 
       font-size: 12px;
+
+      line-height: 1.5;
     }
 
-    .error {
-      color: #fca5a5;
+    .queue-item {
+      padding: 12px 0;
+
+      border-bottom: 1px solid
+        rgba(255, 255, 255, 0.06);
     }
 
-    /* =========================
-       FOOTER
-    ========================= */
-
-    footer {
-      padding: 25px 5px 10px;
-
-      text-align: center;
-
-      color: var(--muted);
-
-      font-size: 10px;
+    .queue-item:last-child {
+      border-bottom: 0;
     }
 
-    /* =========================
-       MOBILE
-    ========================= */
+    .queue-title {
+      font-weight: 700;
+      font-size: 13px;
+    }
 
-    @media (max-width: 1000px) {
+    .queue-meta {
+      margin-top: 5px;
+      color: #849d99;
+      font-size: 11px;
+    }
 
-      .overview-grid,
-      .analytics-grid {
-        grid-template-columns:
-          repeat(2, minmax(0, 1fr));
-      }
+    .empty {
+      color: #718984;
+      font-size: 13px;
+      padding: 10px 0;
+    }
 
-      .module-grid {
-        grid-template-columns:
-          repeat(3, minmax(0, 1fr));
-      }
+    .danger {
+      color: #ff8f8f;
+    }
+
+    .safe {
+      color: #9df5dc;
+    }
+
+    .warning {
+      color: #ffd38a;
     }
 
     @media (max-width: 600px) {
-
       .container {
         padding: 10px;
       }
 
-      .topbar {
-        padding: 14px;
-
-        align-items: flex-start;
-
-        flex-direction: column;
+      .header {
+        padding: 16px;
       }
 
-      .brand h1 {
-        font-size: 17px;
+      .brand {
+        font-size: 20px;
       }
 
-      .overview-grid,
-      .analytics-grid {
+      .controls {
         grid-template-columns:
-          1fr 1fr;
-      }
-
-      .module-grid {
-        grid-template-columns:
-          1fr 1fr;
-      }
-
-      .section {
-        padding: 13px;
-        border-radius: 14px;
-      }
-
-      .card {
-        padding: 13px;
-      }
-
-      .card-value {
-        font-size: 22px;
-      }
-    }
-
-    @media (max-width: 390px) {
-
-      .overview-grid,
-      .analytics-grid {
-        grid-template-columns: 1fr;
-      }
-
-      .module-grid {
-        grid-template-columns: 1fr 1fr;
+          1fr;
       }
     }
   </style>
@@ -492,193 +263,624 @@
 
 <body>
 
-  <main class="container">
+  <div class="container">
 
-    <!-- =========================
-         HEADER
-    ========================= -->
-
-    <header class="topbar">
+    <header class="header">
 
       <div class="brand">
-
-        <div class="logo">
-          ZA
-        </div>
-
-        <div>
-          <h1>
-            ZEESHAN NEWS AI
-          </h1>
-
-          <p>
-            Founder & CEO — AI News Command Center
-          </p>
-        </div>
-
+        ZEESHAN NEWS AI
       </div>
 
-      <div class="system-status">
-        <span class="status-dot"></span>
-        SYSTEM ONLINE
+      <div class="subtitle">
+        CEO COMMAND CENTER •
+        READ-ONLY + CONTROL PANEL
       </div>
 
     </header>
 
+    <main class="grid">
 
-    <!-- =========================
-         OVERVIEW
-    ========================= -->
+      <!-- SYSTEM STATUS -->
 
-    <section class="section">
+      <section class="card">
 
-      <div class="section-header">
         <h2>
-          01 — CEO OVERVIEW
+          SYSTEM STATUS
         </h2>
 
-        <span>
-          Live system statistics
-        </span>
-      </div>
-
-      <div
-        class="grid overview-grid"
-        id="overviewGrid"
-      >
-
-        <div class="card">
-          <div class="card-label">
-            Total News
-          </div>
-
-          <div
-            class="card-value"
-            id="totalNews"
+        <div class="status-row">
+          <span>Server</span>
+          <span
+            class="value"
+            id="serverStatus"
           >
-            —
-          </div>
-
-          <div class="card-small">
-            Articles in database
-          </div>
-        </div>
-
-
-        <div class="card">
-          <div class="card-label">
-            AI Analyzed
-          </div>
-
-          <div
-            class="card-value"
-            id="analyzedNews"
-          >
-            —
-          </div>
-
-          <div class="card-small">
-            AI processed articles
-          </div>
-        </div>
-
-
-        <div class="card">
-          <div class="card-label">
-            Pending AI
-          </div>
-
-          <div
-            class="card-value"
-            id="pendingAnalysis"
-          >
-            —
-          </div>
-
-          <div class="card-small">
-            Waiting for analysis
-          </div>
-        </div>
-
-
-        <div class="card">
-          <div class="card-label">
-            Push Users
-          </div>
-
-          <div
-            class="card-value"
-            id="pushUsers"
-          >
-            —
-          </div>
-
-          <div class="card-small">
-            Active subscriptions
-          </div>
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- =========================
-         ANALYTICS
-    ========================= -->
-
-    <section class="section">
-
-      <div class="section-header">
-
-        <div>
-          <h2>
-            02 — ANALYTICS INTELLIGENCE
-          </h2>
-
-          <span>
-            Last 30 days
+            Loading...
           </span>
         </div>
 
-      </div>
-
-
-      <div
-        class="grid analytics-grid"
-      >
-
-        <div class="card">
-
-          <div class="card-label">
-            Total Events
-          </div>
-
-          <div
-            class="card-value"
-            id="analyticsEvents"
+        <div class="status-row">
+          <span>Database</span>
+          <span
+            class="value"
+            id="databaseStatus"
           >
-            —
-          </div>
+            Loading...
+          </span>
+        </div>
 
-          <div class="card-small">
-            All tracked activity
-          </div>
+        <div class="status-row">
+          <span>Auto-Pilot</span>
+          <span
+            class="value"
+            id="autoPilotStatus"
+          >
+            Loading...
+          </span>
+        </div>
+
+        <div class="status-row">
+          <span>Emergency Stop</span>
+          <span
+            class="value"
+            id="emergencyStatus"
+          >
+            Loading...
+          </span>
+        </div>
+
+      </section>
+
+
+      <!-- AUTO-PILOT CONTROL -->
+
+      <section class="card">
+
+        <h2>
+          AUTO-PILOT CONTROL
+        </h2>
+
+        <div class="status-row">
+          <span>Current Mode</span>
+
+          <span
+            class="value"
+            id="currentMode"
+          >
+            Loading...
+          </span>
+        </div>
+
+        <div class="controls">
+
+          <button
+            onclick="setAutoPilotMode('off')"
+          >
+            OFF
+          </button>
+
+          <button
+            onclick="setAutoPilotMode('assisted')"
+          >
+            ASSISTED
+          </button>
+
+          <button
+            onclick="setAutoPilotMode('auto')"
+          >
+            AUTO
+          </button>
 
         </div>
 
+        <button
+          class="stop-button"
+          onclick="activateEmergencyStop()"
+        >
+          🚨 EMERGENCY STOP
+        </button>
 
-        <div class="card">
+        <button
+          class="release-button"
+          onclick="releaseEmergencyStop()"
+        >
+          RELEASE STOP
+        </button>
 
-          <div class="card-label">
-            Page Views
-          </div>
+        <div
+          class="message"
+          id="autoPilotMessage"
+        >
+          Loading Auto-Pilot control...
+        </div>
 
-          <div
-            class="card-value"
-            id="analyticsPageViews"
+      </section>
+
+
+      <!-- CEO APPROVAL -->
+
+      <section class="card">
+
+        <h2>
+          CEO APPROVAL QUEUE
+        </h2>
+
+        <div class="status-row">
+          <span>Pending</span>
+
+          <span
+            class="value"
+            id="approvalPending"
           >
             —
-          </div>
+          </span>
+        </div>
 
-         
+        <div class="status-row">
+          <span>Approved</span>
+
+          <span
+            class="value"
+            id="approvalApproved"
+          >
+            —
+          </span>
+        </div>
+
+        <div class="status-row">
+          <span>Rejected</span>
+
+          <span
+            class="value"
+            id="approvalRejected"
+          >
+            —
+          </span>
+        </div>
+
+      </section>
+
+
+      <!-- DISTRIBUTION -->
+
+      <section class="card">
+
+        <h2>
+          DISTRIBUTION
+        </h2>
+
+        <div
+          id="distributionStatus"
+          class="empty"
+        >
+          Loading...
+        </div>
+
+      </section>
+
+
+      <!-- SYSTEM MESSAGE -->
+
+      <section class="card">
+
+        <h2>
+          CEO MESSAGE
+        </h2>
+
+        <div
+          id="systemMessage"
+          class="message"
+        >
+          Command Center initializing...
+        </div>
+
+      </section>
+
+    </main>
+
+  </div>
+
+
+  <script>
+
+    async function fetchJSON(
+      url,
+      options = {}
+    ) {
+      const response =
+        await fetch(
+          url,
+          {
+            ...options,
+            headers: {
+              "Content-Type":
+                "application/json",
+              ...(options.headers || {})
+            }
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+          "Request failed"
+        );
+      }
+
+      return data;
+    }
+
+
+    async function loadSystemStatus() {
+
+      try {
+
+        const data =
+          await fetchJSON(
+            "/api/system/status"
+          );
+
+        document.getElementById(
+          "serverStatus"
+        ).textContent =
+          data.status ||
+          "ready";
+
+        document.getElementById(
+          "databaseStatus"
+        ).textContent =
+          "connected";
+
+        document.getElementById(
+          "autoPilotStatus"
+        ).textContent =
+          data.features?.autoPilot
+            ? "enabled"
+            : "disabled";
+
+      } catch (error) {
+
+        document.getElementById(
+          "serverStatus"
+        ).textContent =
+          "error";
+
+        document.getElementById(
+          "databaseStatus"
+        ).textContent =
+          "unknown";
+
+      }
+
+    }
+
+
+    async function loadAutoPilotControl() {
+
+      try {
+
+        const data =
+          await fetchJSON(
+            "/api/autopilot/control"
+          );
+
+        const control =
+          data.control;
+
+        const mode =
+          control?.mode ||
+          "assisted";
+
+        const stopped =
+          Boolean(
+            control?.emergency_stop
+          );
+
+        document.getElementById(
+          "currentMode"
+        ).textContent =
+          mode.toUpperCase();
+
+        document.getElementById(
+          "emergencyStatus"
+        ).textContent =
+          stopped
+            ? "ACTIVE"
+            : "OFF";
+
+        document.getElementById(
+          "emergencyStatus"
+        ).className =
+          stopped
+            ? "value danger"
+            : "value safe";
+
+        const message =
+          stopped
+            ? (
+                control.stop_reason ||
+                "Emergency STOP is active."
+              )
+            : (
+                "Auto-Pilot is operating in " +
+                mode.toUpperCase() +
+                " mode."
+              );
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          message;
+
+      } catch (error) {
+
+        document.getElementById(
+          "currentMode"
+        ).textContent =
+          "ERROR";
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          error.message;
+
+      }
+
+    }
+
+
+    async function setAutoPilotMode(
+      mode
+    ) {
+
+      try {
+
+        const confirmed =
+          window.confirm(
+            `Change Auto-Pilot mode to ${mode.toUpperCase()}?`
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        const data =
+          await fetchJSON(
+            "/api/autopilot/mode",
+            {
+              method: "POST",
+
+              body:
+                JSON.stringify({
+                  mode
+                })
+            }
+          );
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          data.message ||
+          "Auto-Pilot mode updated.";
+
+        await loadAutoPilotControl();
+
+      } catch (error) {
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          "Error: " +
+          error.message;
+
+      }
+
+    }
+
+
+    async function activateEmergencyStop() {
+
+      try {
+
+        const confirmed =
+          window.confirm(
+            "EMERGENCY STOP will hold Auto-Pilot publishing. Continue?"
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        const data =
+          await fetchJSON(
+            "/api/autopilot/emergency-stop",
+            {
+              method: "POST",
+
+              body:
+                JSON.stringify({
+                  reason:
+                    "Emergency stop activated from CEO Dashboard",
+
+                  stoppedBy:
+                    "CEO"
+                })
+            }
+          );
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          data.message ||
+          "Emergency STOP activated.";
+
+        await loadAutoPilotControl();
+
+      } catch (error) {
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          "Error: " +
+          error.message;
+
+      }
+
+    }
+
+
+    async function releaseEmergencyStop() {
+
+      try {
+
+        const confirmed =
+          window.confirm(
+            "Release Auto-Pilot Emergency STOP?"
+          );
+
+        if (!confirmed) {
+          return;
+        }
+
+        const data =
+          await fetchJSON(
+            "/api/autopilot/release-stop",
+            {
+              method: "POST",
+
+              body:
+                JSON.stringify({
+                  releasedBy:
+                    "CEO"
+                })
+            }
+          );
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          data.message ||
+          "Emergency STOP released.";
+
+        await loadAutoPilotControl();
+
+      } catch (error) {
+
+        document.getElementById(
+          "autoPilotMessage"
+        ).textContent =
+          "Error: " +
+          error.message;
+
+      }
+
+    }
+
+
+    async function loadApprovalStats() {
+
+      try {
+
+        const data =
+          await fetchJSON(
+            "/api/ceo-approval/stats"
+          );
+
+        const stats =
+          data.stats || {};
+
+        document.getElementById(
+          "approvalPending"
+        ).textContent =
+          stats.pending ??
+          stats.pending_count ??
+          0;
+
+        document.getElementById(
+          "approvalApproved"
+        ).textContent =
+          stats.approved ??
+          stats.approved_count ??
+          0;
+
+        document.getElementById(
+          "approvalRejected"
+        ).textContent =
+          stats.rejected ??
+          stats.rejected_count ??
+          0;
+
+      } catch (error) {
+
+        document.getElementById(
+          "approvalPending"
+        ).textContent =
+          "—";
+
+      }
+
+    }
+
+
+    async function loadDistributionStatus() {
+
+      try {
+
+        const data =
+          await fetchJSON(
+            "/api/content-distribution/status"
+          );
+
+        const status =
+          data.status ||
+          data;
+
+        document.getElementById(
+          "distributionStatus"
+        ).textContent =
+          status.status ||
+          "ready";
+
+      } catch (error) {
+
+        document.getElementById(
+          "distributionStatus"
+        ).textContent =
+          "ready";
+
+      }
+
+    }
+
+
+    async function refreshDashboard() {
+
+      await Promise.all([
+        loadSystemStatus(),
+        loadAutoPilotControl(),
+        loadApprovalStats(),
+        loadDistributionStatus()
+      ]);
+
+      document.getElementById(
+        "systemMessage"
+      ).textContent =
+        "CEO Command Center is online. Auto-Pilot control is connected.";
+
+    }
+
+
+    refreshDashboard();
+
+
+    setInterval(
+      refreshDashboard,
+      30000
+    );
+
+  </script>
+
+</body>
+</html>
