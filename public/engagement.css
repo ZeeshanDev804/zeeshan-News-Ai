@@ -1,0 +1,197 @@
+.engagement-section {
+  width: 100%;
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.engagement-heading {
+  margin-bottom: 20px;
+}
+
+.engagement-heading span {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.8px;
+  opacity: 0.65;
+  margin-bottom: 6px;
+}
+
+.engagement-heading h2 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.engagement-heading p {
+  margin: 8px 0 0;
+  opacity: 0.7;
+  font-size: 14px;
+}
+
+.engagement-list {
+  display: grid;
+  grid-template-columns:
+    repeat(auto-fit, minmax(280px, 1fr));
+  gap: 18px;
+}
+
+.engagement-card {
+  position: relative;
+  padding: 20px;
+  border: 1px solid
+    rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.07),
+      rgba(255, 255, 255, 0.025)
+    );
+  box-shadow:
+    0 12px 35px
+    rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px);
+  box-sizing: border-box;
+}
+
+.engagement-type {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  opacity: 0.75;
+}
+
+.engagement-card h3 {
+  margin: 15px 0 18px;
+  font-size: 19px;
+  line-height: 1.45;
+}
+
+.engagement-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.engagement-option {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 14px;
+  border: 1px solid
+    rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background:
+    rgba(255, 255, 255, 0.045);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.engagement-option:hover {
+  transform: translateY(-1px);
+  background:
+    rgba(255, 255, 255, 0.09);
+  border-color:
+    rgba(255, 255, 255, 0.22);
+}
+
+.engagement-option:active {
+  transform: translateY(0);
+}
+
+.engagement-option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.engagement-result {
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+.engagement-results {
+  margin-top: 10px;
+}
+
+.engagement-results > strong {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.engagement-result-row {
+  margin-bottom: 12px;
+}
+
+.engagement-result-row > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+
+.engagement-result-bar {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    rgba(255, 255, 255, 0.08);
+}
+
+.engagement-result-fill {
+  height: 100%;
+  min-width: 0;
+  border-radius: inherit;
+  background: currentColor;
+  transition: width 0.4s ease;
+}
+
+.engagement-result-row small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+@media (max-width: 600px) {
+  .engagement-section {
+    margin: 28px auto;
+    padding: 0 12px;
+  }
+
+  .engagement-heading h2 {
+    font-size: 23px;
+  }
+
+  .engagement-card {
+    padding: 16px;
+    border-radius: 15px;
+  }
+
+  .engagement-card h3 {
+    font-size: 17px;
+  }
+
+  .engagement-option {
+    min-height: 48px;
+  }
+}
