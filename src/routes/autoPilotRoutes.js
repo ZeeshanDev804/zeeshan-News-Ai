@@ -10,15 +10,15 @@ import {
 
 const router = express.Router();
 
-/**
- * GET /api/autopilot/status
- * Auto-Pilot system status
- */
+/*
+  GET /api/autopilot/status
+*/
 router.get("/status", async (req, res, next) => {
   try {
     const db = req.app.locals.db;
 
-    const status = await getAutoPilotStoreStatus(db);
+    const status =
+      await getAutoPilotStoreStatus(db);
 
     res.json({
       success: true,
@@ -29,15 +29,15 @@ router.get("/status", async (req, res, next) => {
   }
 });
 
-/**
- * GET /api/autopilot/control
- * Current Auto-Pilot control state
- */
+/*
+  GET /api/autopilot/control
+*/
 router.get("/control", async (req, res, next) => {
   try {
     const db = req.app.locals.db;
 
-    const control = await getAutoPilotControl(db);
+    const control =
+      await getAutoPilotControl(db);
 
     res.json({
       success: true,
@@ -48,35 +48,47 @@ router.get("/control", async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/autopilot/mode
- * Change Auto-Pilot mode
- *
- * Body:
- * {
- *   "mode": "off" | "assisted" | "auto"
- * }
- */
+/*
+  POST /api/autopilot/mode
+
+  Body:
+  {
+    "mode": "off"
+  }
+
+  Allowed:
+  off
+  assisted
+  auto
+*/
 router.post("/mode", async (req, res, next) => {
   try {
     const db = req.app.locals.db;
 
-    const mode = String(req.body?.mode || "")
+    const mode = String(
+      req.body?.mode || ""
+    )
       .trim()
       .toLowerCase();
 
     if (!mode) {
       return res.status(400).json({
         success: false,
-        error: "Auto-Pilot mode is required",
+        error:
+          "Auto-Pilot mode is required",
       });
     }
 
-    const control = await setAutoPilotMode(db, mode);
+    const control =
+      await setAutoPilotMode(
+        db,
+        mode
+      );
 
     res.json({
       success: true,
-      message: `Auto-Pilot mode changed to ${mode}`,
+      message:
+        `Auto-Pilot mode changed to ${mode}`,
       control,
     });
   } catch (error) {
@@ -84,82 +96,74 @@ router.post("/mode", async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/autopilot/emergency-stop
- * Immediately stop Auto-Pilot
- *
- * Body:
- * {
- *   "reason": "Optional reason",
- *   "stoppedBy": "CEO"
- * }
- */
-router.post("/emergency-stop", async (req, res, next) => {
-  try {
-    const db = req.app.locals.db;
+/*
+  POST /api/autopilot/emergency-stop
+*/
+router.post(
+  "/emergency-stop",
+  async (req, res, next) => {
+    try {
+      const db = req.app.locals.db;
 
-    const reason =
-      String(
+      const reason = String(
         req.body?.reason ||
           "Emergency stop activated by CEO"
       ).trim();
 
-    const stoppedBy =
-      String(
-        req.body?.stoppedBy || "CEO"
+      const stoppedBy = String(
+        req.body?.stoppedBy ||
+          "CEO"
       ).trim();
 
-    const control =
-      await activateEmergencyStop(
-        db,
-        reason,
-        stoppedBy
-      );
+      const control =
+        await activateEmergencyStop(
+          db,
+          reason,
+          stoppedBy
+        );
 
-    res.json({
-      success: true,
-      message:
-        "Auto-Pilot emergency stop activated",
-      control,
-    });
-  } catch (error) {
-    next(error);
+      res.json({
+        success: true,
+        message:
+          "Auto-Pilot emergency stop activated",
+        control,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
-/**
- * POST /api/autopilot/release-stop
- * Release Auto-Pilot emergency stop
- *
- * Body:
- * {
- *   "releasedBy": "CEO"
- * }
- */
-router.post("/release-stop", async (req, res, next) => {
-  try {
-    const db = req.app.locals.db;
+/*
+  POST /api/autopilot/release-stop
+*/
+router.post(
+  "/release-stop",
+  async (req, res, next) => {
+    try {
+      const db = req.app.locals.db;
 
-    const releasedBy =
-      String(
-        req.body?.releasedBy || "CEO"
+      const releasedBy = String(
+        req.body?.releasedBy ||
+          "CEO"
       ).trim();
 
-    const control =
-      await releaseEmergencyStop(
-        db,
-        releasedBy
-      );
+      const control =
+        await releaseEmergencyStop(
+          db,
+          releasedBy
+        );
 
-    res.json({
-      success: true,
-      message:
-        "Auto-Pilot emergency stop released",
-      control,
-    });
-  } catch (error) {
-    next(error);
+      res.json({
+        success: true,
+        message:
+          "Auto-Pilot emergency stop released",
+        control,
+      });
+    } catch (error) {
+      next(error);
+    }
   }
-});
+);
 
 export default router;
