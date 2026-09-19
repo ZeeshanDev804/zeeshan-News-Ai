@@ -9,10 +9,15 @@ import {
 import {
   evaluateAutoPilot,
   createAutoPilotSchedule,
-  createCEOApprovalItem,
 } from "./autoPilotEngine.js";
 
+import {
+  saveCEOApprovalQueue,
+} from "./approvalDistributionBridge.js";
 
+/*
+  Default platforms for global distribution.
+*/
 const DEFAULT_PLATFORMS = [
   "youtube_shorts",
   "tiktok",
@@ -21,623 +26,524 @@ const DEFAULT_PLATFORMS = [
   "x",
 ];
 
-
-function normalizeText(
-  value,
-  maxLength = 5000
-) {
-  return String(
-    value || ""
-  )
-    .trim()
-    .slice(0, maxLength);
-}
-
-
-function normalizePlatforms(
-  platforms
-) {
-  if (
-    !Array.isArray(
-      platforms
-    ) ||
-    platforms.length === 0
-  ) {
-    return [
-      ...DEFAULT_PLATFORMS,
-    ];
+/*
+  Normalize platform list.
+*/
+function normalizePlatforms(platforms) {
+  if (!Array.isArray(platforms)) {
+    return DEFAULT_PLATFORMS;
   }
 
-  return [
-    ...new Set(
-      platforms
-        .map(
-          (platform) =>
-            normalizeText(
-              platform,
-              50
-            ).toLowerCase()
-        )
-        .filter(Boolean),
-    ),
-  ];
+  const cleaned = platforms
+    .map((platform) =>
+      String(platform || "")
+        .trim()
+        .toLowerCase()
+    )
+    .filter(Boolean);
+
+  return cleaned.length > 0
+    ? [...new Set(cleaned)]
+    : DEFAULT_PLATFORMS;
 }
 
-
-function buildPlatformDecision(
-  {
-    platform,
-    article,
-    packageItem,
-    autoPilotSettings,
+/*
+  Normalize regions.
+*/
+function normalizeRegions(regions) {
+  if (!Array.isArray(regions)) {
+    return ["worldwide"];
   }
+
+  const cleaned = regions
+    .map((region) =>
+      String(region || "")
+        .trim()
+        .toLowerCase()
+    )
+    .filter(Boolean);
+
+  return cleaned.length > 0
+    ? [...new Set(cleaned)]
+    : ["worldwide"];
+}
+
+/*
+  Build one queue record from a distribution package
+  and Auto-Pilot decision.
+*/
+function buildQueueItem(
+  distributionPackage,
+  autoPilotResult,
+  schedule
 ) {
-  const content =
-    packageItem?.content ||
+  const packageData =
+    distributionPackage || {};
+
+  const safetyResult =
+    packageData.safetyResult ||
+    packageData.safety_result ||
     {};
 
+  const decision =
+    autoPilotResult?.decision ||
+    "hold";
 
-  const safety =
-    packageItem?.safety ||
-    {};
+  let status = "held";
 
+  if (decision === "auto_publish") {
+    status = "scheduled";
+  }
 
-  const autoPilot =
-    evaluateAutoPilot({
-      content: {
-        title:
-          content.title ||
-          article.title,
+  if (decision === "ceo_approval") {
+    status = "ceo_approval";
+  }
 
-        content:
-          content.caption ||
-          content.description ||
-          "",
+  if (decision === "hold") {
+    status = "held";
+  }
 
-        headline:
-          content.title ||
-          article.title,
-
-        summary:
-          article.ai_summary ||
-          article.description ||
-          "",
-
-        category:
-          article.ai_category ||
-          "general",
-
-        source:
-          article.source ||
-          "Unknown",
-
-        thumbnailText:
-          content.thumbnailText ||
-          "",
-
-        platform,
-
-        originalContent:
-          article.content ||
-          "",
-      },
-
-      settings:
-        autoPilotSettings,
-
-      platform,
-    });
-
+  if (decision === "blocked") {
+    status = "blocked";
+  }
 
   return {
-    platform,
+    articleId:
+      packageData.articleId ||
+      packageData.article_id ||
+      null,
 
-    safety,
+    platform:
+      packageData.platform ||
+      "website",
 
-    autoPilot,
+    region:
+      packageData.region ||
+      "worldwide",
 
-    decision:
-      autoPilot.decision,
+    status,
 
-    status:
-      autoPilot.status,
+    title:
+      packageData.title ||
+      "",
 
-    reason:
-      autoPilot.reason ||
+    caption:
+      packageData.caption ||
+      packageData.content ||
+      "",
+
+    description:
+      packageData.description ||
+      "",
+
+    hook:
+      packageData.hook ||
+      "",
+
+    closing:
+      packageData.closing ||
+      "",
+
+    callToAction:
+      packageData.callToAction ||
+      packageData.call_to_action ||
+      "",
+
+    thumbnailText:
+      packageData.thumbnailText ||
+      packageData.thumbnail_text ||
+      "",
+
+    pinnedComment:
+      packageData.pinnedComment ||
+      packageData.pinned_comment ||
+      "",
+
+    hashtags:
+      packageData.hashtags ||
+      [],
+
+    safetyResult,
+
+    decision,
+
+    riskLevel:
+      autoPilotResult?.riskLevel ||
+      autoPilotResult?.risk_level ||
+      safetyResult?.riskLevel ||
+      safetyResult?.risk_level ||
+      "medium",
+
+    scheduleData:
+      schedule || {},
+
+    scheduledAt:
+      schedule?.scheduledAt ||
+      schedule?.scheduled_at ||
+      null,
+
+    providerName:
+      packageData.providerName ||
+      packageData.provider_name ||
+      null,
+
+    providerPostId:
+      packageData.providerPostId ||
+      packageData.provider_post_id ||
       null,
   };
 }
 
+/*
+  Run complete content distribution orchestration.
 
+  Flow:
+
+  Article
+    ↓
+  Social Package Generation
+    ↓
+  Safety Evaluation
+    ↓
+  Auto-Pilot Decision
+    ↓
+  ├── auto_publish
+  ├── ceo_approval
+  ├── held
+  └── blocked
+    ↓
+  Database Queue
+    ↓
+  CEO Approval Queue
+*/
 export async function runContentDistributionOrchestrator(
-  {
-    db,
-    article,
-    platforms,
-    region = "Worldwide",
-    autoPilotSettings = {},
-    previousContent = [],
-  } = {}
+  options = {}
 ) {
-  if (!db) {
+  const {
+    db = null,
+
+    articleId = null,
+    title = "",
+    summary = "",
+    category = "general",
+    source = "",
+    sourceUrl = "",
+    content = "",
+
+    platforms,
+    regions,
+
+    mode = "assisted",
+    timezone = "UTC",
+
+    saveToDatabase = true,
+  } = options;
+
+  if (!title || !String(title).trim()) {
     throw new Error(
-      "Database connection is required"
+      "title is required"
     );
   }
-
-
-  if (
-    !article ||
-    !article.title
-  ) {
-    throw new Error(
-      "Article with title is required"
-    );
-  }
-
 
   const selectedPlatforms =
-    normalizePlatforms(
-      platforms
-    );
+    normalizePlatforms(platforms);
 
+  const selectedRegions =
+    normalizeRegions(regions);
+
+  const generatedPackages = [];
+
+  const queueItems = [];
+
+  const approvalItems = [];
+
+  const autoPublishSchedules = [];
+
+  const errors = [];
 
   /*
-    STEP 1
-    Generate platform-specific content
+    Generate platform-specific packages.
   */
+  for (const platform of selectedPlatforms) {
+    for (const region of selectedRegions) {
+      try {
+        const distributionPackage =
+          await createSocialDistributionPackage({
+            articleId,
+            title,
+            summary,
+            category,
+            source,
+            sourceUrl,
+            content,
+            platform,
+            region,
+            timezone,
+          });
 
-  const generated =
-    await createSocialDistributionPackage(
-      article,
-      {
-        platforms:
-          selectedPlatforms,
+        const autoPilotResult =
+          evaluateAutoPilot({
+            mode,
+            platform,
+            region,
+            category,
+            content:
+              distributionPackage?.caption ||
+              distributionPackage?.content ||
+              "",
+            safetyResult:
+              distributionPackage?.safetyResult ||
+              {},
+          });
 
-        region,
+        let schedule = null;
 
-        previousContent,
+        if (
+          autoPilotResult?.decision ===
+          "auto_publish"
+        ) {
+          schedule =
+            createAutoPilotSchedule({
+              platform,
+              region,
+              timezone,
+              articleId,
+              title,
+            });
+        }
+
+        const queueItem =
+          buildQueueItem(
+            distributionPackage,
+            autoPilotResult,
+            schedule
+          );
+
+        generatedPackages.push(
+          distributionPackage
+        );
+
+        queueItems.push(queueItem);
+
+        /*
+          CEO approval items are stored separately
+          so the CEO dashboard can review them.
+        */
+        if (
+          autoPilotResult?.decision ===
+          "ceo_approval"
+        ) {
+          approvalItems.push({
+            articleId,
+
+            platform,
+
+            region,
+
+            title,
+
+            content:
+              distributionPackage?.caption ||
+              distributionPackage?.content ||
+              "",
+
+            decision:
+              "ceo_approval",
+
+            riskLevel:
+              autoPilotResult?.riskLevel ||
+              "medium",
+
+            safetyResult:
+              distributionPackage?.safetyResult ||
+              {},
+
+            scheduleData:
+              schedule || {},
+          });
+        }
+
+        /*
+          Keep track of automatically scheduled
+          publishing jobs.
+        */
+        if (
+          autoPilotResult?.decision ===
+          "auto_publish"
+        ) {
+          autoPublishSchedules.push({
+            platform,
+            region,
+            schedule,
+            articleId,
+            title,
+          });
+        }
+      } catch (error) {
+        console.error(
+          `❌ Distribution failed for ${platform}/${region}:`,
+          error.message
+        );
+
+        errors.push({
+          platform,
+          region,
+          error: error.message,
+        });
       }
-    );
-
-
-  const decisions = [];
-
-
-  /*
-    STEP 2
-    Auto-Pilot decision for every platform
-  */
-
-  for (
-    const packageItem of
-      generated.packages ||
-      []
-  ) {
-    const platform =
-      packageItem.platform;
-
-
-    const decision =
-      buildPlatformDecision({
-        platform,
-
-        article,
-
-        packageItem,
-
-        autoPilotSettings,
-      });
-
-
-    decisions.push(
-      decision
-    );
+    }
   }
 
+  let savedDistribution = null;
+
+  let savedCEOApprovals = null;
 
   /*
-    STEP 3
-    Prepare final queue items
+    Save distribution queue and CEO approvals.
   */
-
-  const queuePackages = [];
-
-
-  for (
-    const decision of
-      decisions
+  if (
+    saveToDatabase &&
+    db
   ) {
-    const packageItem =
-      (
-        generated.packages ||
-        []
-      ).find(
-        (item) =>
-          item.platform ===
-          decision.platform
-      );
-
-
-    if (!packageItem) {
-      continue;
+    if (queueItems.length > 0) {
+      savedDistribution =
+        await saveDistributionBatch(
+          db,
+          queueItems
+        );
     }
 
-
-    let finalStatus =
-      "draft";
-
-
-    if (
-      decision.decision ===
-      "auto_publish"
-    ) {
-      finalStatus =
-        "scheduled";
-
-    } else if (
-      decision.decision ===
-      "ceo_approval"
-    ) {
-      finalStatus =
-        "ceo_approval";
-
-    } else if (
-      decision.decision ===
-      "hold"
-    ) {
-      finalStatus =
-        "held";
+    if (approvalItems.length > 0) {
+      savedCEOApprovals =
+        await saveCEOApprovalQueue(
+          db,
+          approvalItems
+        );
     }
-
-
-    queuePackages.push({
-      platform:
-        decision.platform,
-
-      status:
-        finalStatus,
-
-      content:
-        packageItem.content ||
-        {},
-
-      safety:
-        decision.safety ||
-        {},
-
-      publishing: {
-        autoPilot:
-          decision.autoPilot ||
-          {},
-
-        decision:
-          decision.decision,
-
-        status:
-          finalStatus,
-
-        providerConnected:
-          false,
-
-        published:
-          false,
-      },
-    });
   }
 
-
   /*
-    STEP 4
-    Save everything into DB
+    Build final summary.
   */
-
-  const saved =
-    await saveDistributionBatch(
-      db,
-      {
-        articleId:
-          article.id ||
-          null,
-
-        region,
-
-        packages:
-          queuePackages,
-      }
-    );
-
-
-  /*
-    STEP 5
-    Build CEO approval queue
-  */
-
-  const approvalQueue =
-    [];
-
-
-  for (
-    const decision of
-      decisions
-  ) {
-    if (
-      decision.decision !==
-      "ceo_approval"
-    ) {
-      continue;
-    }
-
-
-    const packageItem =
-      (
-        generated.packages ||
-        []
-      ).find(
-        (item) =>
-          item.platform ===
-          decision.platform
-      );
-
-
-    const approval =
-      createCEOApprovalItem({
-        article,
-
-        platform:
-          decision.platform,
-
-        content:
-          packageItem?.content ||
-          {},
-
-        safety:
-          decision.safety,
-
-        reason:
-          decision.reason ||
-          "CEO approval required",
-      });
-
-
-    approvalQueue.push(
-      approval
-    );
-  }
-
-
-  /*
-    STEP 6
-    Build Auto-Pilot schedules
-  */
-
-  const schedules =
-    [];
-
-
-  for (
-    const decision of
-      decisions
-  ) {
-    if (
-      decision.decision !==
-      "auto_publish"
-    ) {
-      continue;
-    }
-
-
-    const packageItem =
-      (
-        generated.packages ||
-        []
-      ).find(
-        (item) =>
-          item.platform ===
-          decision.platform
-      );
-
-
-    if (!packageItem) {
-      continue;
-    }
-
-
-    const schedule =
-      createAutoPilotSchedule({
-        article,
-
-        platform:
-          decision.platform,
-
-        region,
-
-        content:
-          packageItem.content ||
-          {},
-
-        safety:
-          decision.safety,
-
-        settings:
-          autoPilotSettings,
-      });
-
-
-    schedules.push({
-      platform:
-        decision.platform,
-
-      schedule,
-    });
-  }
-
-
-  /*
-    FINAL SYSTEM REPORT
-  */
-
-  const summary = {
-    totalPlatforms:
+  const summaryResult = {
+    platforms:
       selectedPlatforms.length,
 
+    regions:
+      selectedRegions.length,
+
     generated:
-      generated.packages
-        ?.filter(
-          (item) =>
-            item.status !==
-            "generation_failed"
-        )
-        .length ||
-      0,
+      generatedPackages.length,
 
-    autoPublish:
-      decisions.filter(
-        (item) =>
-          item.decision ===
-          "auto_publish"
-      ).length,
+    queued:
+      queueItems.length,
 
-    ceoApproval:
-      decisions.filter(
-        (item) =>
-          item.decision ===
-          "ceo_approval"
-      ).length,
+    ceoApprovalRequired:
+      approvalItems.length,
 
-    held:
-      decisions.filter(
-        (item) =>
-          item.decision ===
-          "hold"
-      ).length,
+    autoPublishScheduled:
+      autoPublishSchedules.length,
 
-    blocked:
-      decisions.filter(
-        (item) =>
-          item.status ===
-          "blocked"
-      ).length,
-
-    providerConnected:
-      false,
-
-    actualPublishing:
-      false,
+    errors:
+      errors.length,
   };
 
+  let nextStep =
+    "Review distribution results";
+
+  if (
+    approvalItems.length > 0
+  ) {
+    nextStep =
+      "CEO approval is required for some distribution items";
+  } else if (
+    autoPublishSchedules.length > 0
+  ) {
+    nextStep =
+      "Auto-Pilot schedules are ready for provider publishing";
+  } else if (
+    queueItems.length > 0
+  ) {
+    nextStep =
+      "Distribution queue created";
+  }
 
   return {
-    success: true,
+    success:
+      errors.length === 0,
 
-    type:
-      "content_distribution_orchestration",
+    articleId,
 
-    status:
-      "processed",
+    mode,
 
-    article: {
-      id:
-        article.id ||
-        null,
-
-      title:
-        normalizeText(
-          article.title,
-          1000
-        ),
-
-      category:
-        normalizeText(
-          article.ai_category ||
-            "general",
-          100
-        ),
-
-      source:
-        normalizeText(
-          article.source ||
-            "Unknown",
-          200
-        ),
-    },
-
-    region,
+    timezone,
 
     platforms:
       selectedPlatforms,
 
-    summary,
+    regions:
+      selectedRegions,
 
-    generated,
+    packages:
+      generatedPackages,
 
-    decisions,
+    queue:
+      queueItems,
 
-    saved,
+    approvals:
+      approvalItems,
 
-    approvalQueue,
+    autoPublishSchedules,
 
-    schedules,
+    savedDistribution,
 
-    nextStep:
-      summary.autoPublish >
-      0
-        ? "video_or_social_provider_required"
-        : summary.ceoApproval >
-            0
-          ? "ceo_review_required"
-          : summary.held >
-              0
-            ? "safety_review_required"
-            : "no_action",
+    savedCEOApprovals,
 
-    generatedAt:
-      new Date().toISOString(),
+    errors,
+
+    summary:
+      summaryResult,
+
+    nextStep,
   };
 }
 
-
+/*
+  Lightweight orchestrator status.
+*/
 export function getOrchestratorStatus() {
   return {
-    success: true,
-
-    engine:
-      "ZEESHAN NEWS AI Content Distribution Orchestrator",
+    name:
+      "Content Distribution Orchestrator",
 
     status:
       "ready",
 
-    workflow: [
-      "news",
-      "ai_content",
-      "safety",
-      "auto_pilot",
-      "ceo_approval",
-      "regional_schedule",
-      "distribution_queue",
-      "provider",
-      "publish",
+    modeSupport: [
+      "off",
+      "assisted",
+      "auto",
     ],
 
-    autoPilot:
+    platforms:
+      DEFAULT_PLATFORMS,
+
+    flow: [
+      "content generation",
+      "safety evaluation",
+      "auto-pilot decision",
+      "distribution queue",
+      "CEO approval",
+      "scheduled publishing",
+    ],
+
+    databasePersistence:
       true,
 
-    ceoApproval:
-      true,
-
-    safetyLayer:
-      true,
-
-    regionalScheduling:
-      true,
-
-    providerConnected:
+    realPublishing:
       false,
 
-    actualPublishing:
-      false,
-
-    generatedAt:
-      new Date().toISOString(),
+    providerStatus:
+      "not_connected",
   };
 }
