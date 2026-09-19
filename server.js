@@ -18,6 +18,7 @@ import socialDistributionRoutes from "./src/routes/socialDistributionRoutes.js";
 import contentDistributionRoutes from "./src/routes/contentDistributionRoutes.js";
 import ceoApprovalRoutes from "./src/routes/ceoApprovalRoutes.js";
 import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.js";
+import autoPilotRoutes from "./src/routes/autoPilotRoutes.js";
 
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
@@ -157,6 +158,7 @@ app.get(
           socialDistribution: true,
           contentDistribution: true,
           autoPilot: true,
+          autoPilotControl: true,
           ceoApproval: true,
           ceoApprovalDashboard: true,
         },
@@ -260,6 +262,14 @@ app.use(
 app.use(
   "/api/content-distribution",
   contentDistributionRoutes
+);
+
+/*
+  Auto-Pilot Control
+*/
+app.use(
+  "/api/autopilot",
+  autoPilotRoutes
 );
 
 /*
