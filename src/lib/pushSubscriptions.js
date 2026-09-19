@@ -1,41 +1,30 @@
-function normalizeValue(
-  value,
-  fallback = ""
-) {
-  return String(
-    value ?? fallback
-  ).trim();
-}
-
 function normalizeBoolean(
   value,
   fallback
 ) {
-  if (
-    typeof value === "boolean"
-  ) {
+  if (typeof value === "boolean") {
     return value;
   }
 
   return fallback;
 }
 
-function normalizeFrequency(
-  value
+function normalizeFrequencyLimit(
+  value,
+  fallback = 10
 ) {
   const number =
     Number(value);
 
   if (
-    !Number.isInteger(number) ||
-    number < 1
+    !Number.isFinite(number)
   ) {
-    return 10;
+    return fallback;
   }
 
   return Math.min(
-    number,
-    50
+    50,
+    Math.max(1, Math.floor(number))
   );
 }
 
@@ -44,73 +33,50 @@ function validateSubscription(
 ) {
   if (
     !subscription ||
-    typeof subscription !==
-      "object"
+    typeof subscription !== "object"
   ) {
     throw new Error(
       "Push subscription is required"
     );
   }
 
-  const endpoint =
-    normalizeValue(
-      subscription.endpoint
-    );
-
-  const keys =
-    subscription.keys || {};
-
-  const p256dh =
-    normalizeValue(
-      keys.p256dh
-    );
-
-  const auth =
-    normalizeValue(
-      keys.auth
-    );
-
-  if (!endpoint) {
+  if (
+    !subscription.endpoint ||
+    !subscription.keys?.p256dh ||
+    !subscription.keys?.auth
+  ) {
     throw new Error(
-      "Push endpoint is required"
+      "Invalid push subscription"
     );
   }
 
-  if (!p256dh) {
-    throw new Error(
-      "Push p256dh key is required"
-    );
-  }
-
-  if (!auth) {
-    throw new Error(
-      "Push auth key is required"
-    );
-  }
-
-  return {
-    endpoint,
-    p256dh,
-    auth,
-  };
+  return true;
 }
 
 export async function savePushSubscription(
   db,
   subscription,
   preferences = {},
-  userAgent = ""
+  userAgent = null
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateSubscription(
+    subscription
+  );
 
-  const normalized =
-    validateSubscription(
-      subscription
-    );
+  const endpoint =
+    String(
+      subscription.endpoint
+    ).trim();
+
+  const p256dh =
+    String(
+      subscription.keys.p256dh
+    ).trim();
+
+  const auth =
+    String(
+      subscription.keys.auth
+    ).trim();
 
   const breakingNews =
     normalizeBoolean(
@@ -125,8 +91,9 @@ export async function savePushSubscription(
     );
 
   const frequencyLimit =
-    normalizeFrequency(
-      preferences.frequencyLimit
+    normalizeFrequencyLimit(
+      preferences.frequencyLimit,
+      10
     );
 
   const result =
@@ -145,44 +112,17 @@ export async function savePushSubscription(
           updated_at
         )
       VALUES
-        (
-          $1,
-          $2,
-          $3,
-          $4,
-          TRUE,
-          $5,
-          $6,
-          $7,
-          CURRENT_TIMESTAMP
-        )
-
+        ($1, $2, $3, $4, TRUE, $5, $6, $7, CURRENT_TIMESTAMP)
       ON CONFLICT (endpoint)
       DO UPDATE SET
-        p256dh =
-          EXCLUDED.p256dh,
-
-        auth =
-          EXCLUDED.auth,
-
-        user_agent =
-          EXCLUDED.user_agent,
-
-        enabled =
-          TRUE,
-
-        breaking_news =
-          EXCLUDED.breaking_news,
-
-        trending_news =
-          EXCLUDED.trending_news,
-
-        frequency_limit =
-          EXCLUDED.frequency_limit,
-
-        updated_at =
-          CURRENT_TIMESTAMP
-
+        p256dh = EXCLUDED.p256dh,
+        auth = EXCLUDED.auth,
+        user_agent = EXCLUDED.user_agent,
+        enabled = TRUE,
+        breaking_news = EXCLUDED.breaking_news,
+        trending_news = EXCLUDED.trending_news,
+        frequency_limit = EXCLUDED.frequency_limit,
+        updated_at = CURRENT_TIMESTAMP
       RETURNING
         id,
         endpoint,
@@ -194,12 +134,10 @@ export async function savePushSubscription(
         updated_at
       `,
       [
-        normalized.endpoint,
-        normalized.p256dh,
-        normalized.auth,
-        normalizeValue(
-          userAgent
-        ),
+        endpoint,
+        p256dh,
+        auth,
+        userAgent,
         breakingNews,
         trendingNews,
         frequencyLimit,
@@ -213,19 +151,9 @@ export async function disablePushSubscription(
   db,
   endpoint
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
-
-  const normalizedEndpoint =
-    normalizeValue(
-      endpoint
-    );
-
   if (
-    !normalizedEndpoint
+    !endpoint ||
+    !String(endpoint).trim()
   ) {
     throw new Error(
       "Push endpoint is required"
@@ -238,10 +166,8 @@ export async function disablePushSubscription(
       UPDATE push_subscriptions
       SET
         enabled = FALSE,
-        updated_at =
-          CURRENT_TIMESTAMP
-      WHERE
-        endpoint = $1
+        updated_at = CURRENT_TIMESTAMP
+      WHERE endpoint = $1
       RETURNING
         id,
         endpoint,
@@ -249,13 +175,12 @@ export async function disablePushSubscription(
         updated_at
       `,
       [
-        normalizedEndpoint,
+        String(endpoint).trim(),
       ]
     );
 
   return (
-    result.rows[0] ||
-    null
+    result.rows[0] || null
   );
 }
 
@@ -264,40 +189,58 @@ export async function updatePushPreferences(
   endpoint,
   preferences = {}
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
-
-  const normalizedEndpoint =
-    normalizeValue(
-      endpoint
-    );
-
   if (
-    !normalizedEndpoint
+    !endpoint ||
+    !String(endpoint).trim()
   ) {
     throw new Error(
       "Push endpoint is required"
     );
   }
 
+  const existing =
+    await db.query(
+      `
+      SELECT
+        breaking_news,
+        trending_news,
+        frequency_limit
+      FROM push_subscriptions
+      WHERE endpoint = $1
+      LIMIT 1
+      `,
+      [
+        String(endpoint).trim(),
+      ]
+    );
+
+  if (
+    existing.rows.length === 0
+  ) {
+    throw new Error(
+      "Push subscription not found"
+    );
+  }
+
+  const current =
+    existing.rows[0];
+
   const breakingNews =
     normalizeBoolean(
       preferences.breakingNews,
-      true
+      current.breaking_news
     );
 
   const trendingNews =
     normalizeBoolean(
       preferences.trendingNews,
-      true
+      current.trending_news
     );
 
   const frequencyLimit =
-    normalizeFrequency(
-      preferences.frequencyLimit
+    normalizeFrequencyLimit(
+      preferences.frequencyLimit,
+      current.frequency_limit
     );
 
   const result =
@@ -308,10 +251,8 @@ export async function updatePushPreferences(
         breaking_news = $1,
         trending_news = $2,
         frequency_limit = $3,
-        updated_at =
-          CURRENT_TIMESTAMP
-      WHERE
-        endpoint = $4
+        updated_at = CURRENT_TIMESTAMP
+      WHERE endpoint = $4
       RETURNING
         id,
         endpoint,
@@ -325,25 +266,16 @@ export async function updatePushPreferences(
         breakingNews,
         trendingNews,
         frequencyLimit,
-        normalizedEndpoint,
+        String(endpoint).trim(),
       ]
     );
 
-  return (
-    result.rows[0] ||
-    null
-  );
+  return result.rows[0];
 }
 
 export async function getActivePushSubscriptions(
   db
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
-
   const result =
     await db.query(
       `
@@ -361,10 +293,8 @@ export async function getActivePushSubscriptions(
         created_at,
         updated_at
       FROM push_subscriptions
-      WHERE
-        enabled = TRUE
-      ORDER BY
-        updated_at DESC
+      WHERE enabled = TRUE
+      ORDER BY created_at DESC
       `
     );
 
@@ -373,24 +303,13 @@ export async function getActivePushSubscriptions(
 
 export async function markPushNotified(
   db,
-  subscriptionId
+  endpoint
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
-
-  const id =
-    Number(subscriptionId);
-
   if (
-    !Number.isFinite(id) ||
-    id <= 0
+    !endpoint ||
+    !String(endpoint).trim()
   ) {
-    throw new Error(
-      "Valid subscription ID is required"
-    );
+    return null;
   }
 
   const result =
@@ -398,21 +317,20 @@ export async function markPushNotified(
       `
       UPDATE push_subscriptions
       SET
-        last_notified_at =
-          CURRENT_TIMESTAMP,
-        updated_at =
-          CURRENT_TIMESTAMP
-      WHERE
-        id = $1
+        last_notified_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE endpoint = $1
       RETURNING
         id,
+        endpoint,
         last_notified_at
       `,
-      [id]
+      [
+        String(endpoint).trim(),
+      ]
     );
 
   return (
-    result.rows[0] ||
-    null
+    result.rows[0] || null
   );
 }
