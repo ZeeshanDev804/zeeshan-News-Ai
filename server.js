@@ -17,6 +17,7 @@ import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
 import socialDistributionRoutes from "./src/routes/socialDistributionRoutes.js";
 import contentDistributionRoutes from "./src/routes/contentDistributionRoutes.js";
 import ceoApprovalRoutes from "./src/routes/ceoApprovalRoutes.js";
+import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.js";
 
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
@@ -45,7 +46,9 @@ const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
-  console.error("❌ DATABASE_URL is not configured");
+  console.error(
+    "❌ DATABASE_URL is not configured"
+  );
 }
 
 const pool = new Pool({
@@ -58,7 +61,8 @@ const pool = new Pool({
 });
 
 /*
-  Make database available to route modules.
+  Make database available
+  to all route modules.
 */
 app.locals.db = pool;
 
@@ -89,32 +93,37 @@ app.use(
 /*
   Health Check
 */
-app.get("/health", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT NOW() AS now"
-    );
+app.get(
+  "/health",
+  async (req, res) => {
+    try {
+      const result =
+        await pool.query(
+          "SELECT NOW() AS now"
+        );
 
-    res.json({
-      success: true,
-      status: "healthy",
-      database: "connected",
-      timestamp: result.rows[0].now,
-    });
-  } catch (error) {
-    console.error(
-      "❌ Health check error:",
-      error.message
-    );
+      res.json({
+        success: true,
+        status: "healthy",
+        database: "connected",
+        timestamp:
+          result.rows[0].now,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Health check error:",
+        error.message
+      );
 
-    res.status(500).json({
-      success: false,
-      status: "unhealthy",
-      database: "error",
-      error: error.message,
-    });
+      res.status(500).json({
+        success: false,
+        status: "unhealthy",
+        database: "error",
+        error: error.message,
+      });
+    }
   }
-});
+);
 
 /*
   System Status
@@ -149,6 +158,7 @@ app.get(
           contentDistribution: true,
           autoPilot: true,
           ceoApproval: true,
+          ceoApprovalDashboard: true,
         },
 
         scheduler,
@@ -253,11 +263,19 @@ app.use(
 );
 
 /*
-  CEO Approval Queue
+  CEO Approval API
 */
 app.use(
   "/api/ceo-approval",
   ceoApprovalRoutes
+);
+
+/*
+  CEO Approval Dashboard
+*/
+app.use(
+  "/api/ceo-approval-dashboard",
+  ceoApprovalDashboardRoutes
 );
 
 /*
@@ -409,7 +427,9 @@ app.use(
 */
 async function startServer() {
   try {
-    await pool.query("SELECT 1");
+    await pool.query(
+      "SELECT 1"
+    );
 
     console.log(
       "✅ PostgreSQL connected"
