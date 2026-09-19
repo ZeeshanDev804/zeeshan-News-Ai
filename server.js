@@ -19,6 +19,7 @@ import contentDistributionRoutes from "./src/routes/contentDistributionRoutes.js
 import ceoApprovalRoutes from "./src/routes/ceoApprovalRoutes.js";
 import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.js";
 import autoPilotRoutes from "./src/routes/autoPilotRoutes.js";
+import engagementRoutes from "./src/routes/engagementRoutes.js";
 
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
@@ -42,9 +43,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-const PORT = process.env.PORT || 3000;
+const PORT =
+  process.env.PORT || 3000;
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const DATABASE_URL =
+  process.env.DATABASE_URL;
 
 if (!DATABASE_URL) {
   console.error(
@@ -61,15 +64,8 @@ const pool = new Pool({
     : undefined,
 });
 
-/*
-  Make database available
-  to all route modules.
-*/
 app.locals.db = pool;
 
-/*
-  Request body parsing
-*/
 app.use(
   express.json({
     limit: "2mb",
@@ -82,18 +78,12 @@ app.use(
   })
 );
 
-/*
-  Static frontend
-*/
 app.use(
   express.static(
     path.join(__dirname, "public")
   )
 );
 
-/*
-  Health Check
-*/
 app.get(
   "/health",
   async (req, res) => {
@@ -126,9 +116,6 @@ app.get(
   }
 );
 
-/*
-  System Status
-*/
 app.get(
   "/api/system/status",
   async (req, res) => {
@@ -161,6 +148,10 @@ app.get(
           autoPilotControl: true,
           ceoApproval: true,
           ceoApprovalDashboard: true,
+          engagement: true,
+          polls: true,
+          voting: true,
+          quiz: true,
         },
 
         scheduler,
@@ -179,17 +170,11 @@ app.get(
   }
 );
 
-/*
-  News API
-*/
 app.use(
   "/api/news",
   newsRoutes
 );
 
-/*
-  Push Notifications
-*/
 app.use(
   "/api/push",
   pushRoutes
@@ -200,97 +185,66 @@ app.use(
   pushAdminRoutes
 );
 
-/*
-  CEO Dashboard
-*/
 app.use(
   "/api/dashboard",
   dashboardRoutes
 );
 
-/*
-  Analytics
-*/
 app.use(
   "/api/analytics",
   analyticsRoutes
 );
 
-/*
-  Copyright / Takedown
-*/
 app.use(
   "/api/takedown",
   takedownRoutes
 );
 
-/*
-  Source Health
-*/
 app.use(
   "/api/source-health",
   sourceHealthRoutes
 );
 
-/*
-  Automation History
-*/
 app.use(
   "/api/automation-history",
   automationHistoryRoutes
 );
 
-/*
-  Source Policy
-*/
 app.use(
   "/api/source-policy",
   sourcePolicyRoutes
 );
 
-/*
-  Social Distribution
-*/
 app.use(
   "/api/social-distribution",
   socialDistributionRoutes
 );
 
-/*
-  Content Distribution Orchestrator
-*/
 app.use(
   "/api/content-distribution",
   contentDistributionRoutes
 );
 
-/*
-  Auto-Pilot Control
-*/
 app.use(
   "/api/autopilot",
   autoPilotRoutes
 );
 
-/*
-  CEO Approval API
-*/
 app.use(
   "/api/ceo-approval",
   ceoApprovalRoutes
 );
 
-/*
-  CEO Approval Dashboard
-*/
 app.use(
   "/api/ceo-approval-dashboard",
   ceoApprovalDashboardRoutes
 );
 
-/*
-  Manual Automation Run
-*/
+app.use(
+  "/api/engagement",
+  engagementRoutes
+);
+
 app.post(
   "/api/automation/run",
   async (req, res) => {
@@ -316,9 +270,6 @@ app.post(
   }
 );
 
-/*
-  Automation Status
-*/
 app.get(
   "/api/automation/status",
   (req, res) => {
@@ -342,9 +293,6 @@ app.get(
   }
 );
 
-/*
-  Secure Vercel Cron
-*/
 app.get(
   "/api/automation/cron",
   async (req, res) => {
@@ -355,7 +303,8 @@ app.get(
       if (!verification.valid) {
         return res.status(401).json({
           success: false,
-          error: verification.reason,
+          error:
+            verification.reason,
         });
       }
 
@@ -381,23 +330,18 @@ app.get(
   }
 );
 
-/*
-  API 404 Handler
-*/
 app.use(
   "/api",
   (req, res) => {
     res.status(404).json({
       success: false,
-      error: "API route not found",
+      error:
+        "API route not found",
       path: req.originalUrl,
     });
   }
 );
 
-/*
-  Frontend fallback
-*/
 app.get(
   "*",
   (req, res) => {
@@ -411,9 +355,6 @@ app.get(
   }
 );
 
-/*
-  Global Error Handler
-*/
 app.use(
   (error, req, res, next) => {
     console.error(
@@ -427,14 +368,12 @@ app.use(
 
     res.status(500).json({
       success: false,
-      error: "Internal server error",
+      error:
+        "Internal server error",
     });
   }
 );
 
-/*
-  Start Server
-*/
 async function startServer() {
   try {
     await pool.query(
