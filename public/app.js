@@ -1,10 +1,36 @@
-const API_BASE = "";
+"use strict";
 
-let currentPushSubscription = null;
+/*
+  ZEESHAN NEWS AI
+  Main Frontend Application
+
+  Includes:
+  - Latest News
+  - Trending News
+  - News Count
+  - Search
+  - Categories
+  - Category News
+  - Article Links
+  - Web Push Notifications
+  - Push Preferences
+  - Analytics Tracking
+*/
 
 
-function escapeHTML(value = "") {
-  return String(value)
+/* =========================================
+   GLOBAL CONFIG
+========================================= */
+
+const API_BASE = "/api";
+
+
+/* =========================================
+   SAFE HELPERS
+========================================= */
+
+function escapeHTML(value) {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -13,33 +39,28 @@ function escapeHTML(value = "") {
 }
 
 
-async function fetchJSON(
-  url,
-  options = {}
-) {
-  const response =
-    await fetch(
-      `${API_BASE}${url}`,
-      options
+function safeURL(value) {
+  try {
+    const url = new URL(
+      String(value || ""),
+      window.location.origin
     );
 
-  const data =
-    await response.json();
+    if (
+      url.protocol === "http:" ||
+      url.protocol === "https:"
+    ) {
+      return url.href;
+    }
 
-  if (!response.ok) {
-    throw new Error(
-      data?.error ||
-        "Request failed"
-    );
+    return "#";
+  } catch {
+    return "#";
   }
-
-  return data;
 }
 
 
-function formatDate(
-  value
-) {
+function formatDate(value) {
   if (!value) {
     return "Unknown date";
   }
@@ -55,81 +76,184 @@ function formatDate(
     return "Unknown date";
   }
 
-  return date.toLocaleString();
+  return date.toLocaleString(
+    undefined,
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }
+  );
 }
 
 
-function articleCard(
+function truncateText(
+  value,
+  length = 180
+) {
+  const text =
+    String(value || "").trim();
+
+  if (
+    text.length <= length
+  ) {
+    return text;
+  }
+
+  return (
+    text.slice(0, length).trim() +
+    "..."
+  );
+}
+
+
+function getElement(id) {
+  return document.getElementById(id);
+}
+
+
+/* =========================================
+   API HELPER
+========================================= */
+
+async function apiRequest(
+  endpoint,
+  options = {}
+) {
+  const response =
+    await fetch(
+      API_BASE + endpoint,
+      {
+        cache: "no-store",
+        ...options,
+        headers: {
+          Accept:
+            "application/json",
+
+          ...(options.headers || {}),
+        },
+      }
+    );
+
+  let data = null;
+
+  try {
+    data =
+      await response.json();
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error ||
+      `Request failed: ${response.status}`
+    );
+  }
+
+  return data;
+}
+
+
+/* =========================================
+   NEWS CARD
+========================================= */
+
+function createNewsCard(
   article
 ) {
-  const articleUrl =
-    `/article.html?id=${encodeURIComponent(
-      article.id
-    )}`;
-
-  const source =
-    escapeHTML(
-      article.source ||
-        "Unknown Source"
-    );
+  const id =
+    article?.id;
 
   const title =
-    escapeHTML(
-      article.title ||
-        "Untitled"
-    );
+    article?.title ||
+    "Untitled News";
 
-  const summary =
-    escapeHTML(
-      article.ai_summary ||
-        article.description ||
-        article.content ||
-        "No summary available."
-    );
+  const source =
+    article?.source ||
+    "Unknown Source";
 
   const category =
-    escapeHTML(
-      article.ai_category ||
-        "world"
-    );
+    article?.ai_category ||
+    "General";
+
+  const summary =
+    article?.ai_summary ||
+    article?.description ||
+    article?.content ||
+    "No summary available.";
+
+  const publishedAt =
+    article?.published_at ||
+    article?.created_at;
+
+  const articleURL =
+    id
+      ? `/article.html?id=${encodeURIComponent(id)}`
+      : safeURL(article?.link);
 
   return `
     <article class="news-card">
 
       <div class="news-card-meta">
-        <span>
-          ${source}
+
+        <span class="news-source">
+          ${escapeHTML(source)}
         </span>
 
-        <span>
-          ${category}
+        <span class="news-category">
+          ${escapeHTML(category)}
         </span>
+
       </div>
 
-      <h3>
-        <a href="${articleUrl}">
-          ${title}
+
+      <h3 class="news-card-title">
+
+        <a
+          href="${escapeHTML(articleURL)}"
+          data-article-id="${escapeHTML(id || "")}"
+        >
+          ${escapeHTML(title)}
         </a>
+
       </h3>
 
-      <p>
-        ${summary}
+
+      <p class="news-card-summary">
+        ${escapeHTML(
+          truncateText(summary)
+        )}
       </p>
+
 
       <div class="news-card-footer">
 
-        <span>
+        <time>
           ${escapeHTML(
-            formatDate(
-              article.published_at ||
-                article.created_at
-            )
+            formatDate(publishedAt)
           )}
-        </span>
+        </time>
 
-        <a href="${articleUrl}">
-          Read Article →
-        </a>
+
+        ${
+          article?.link
+            ? `
+              <a
+                href="${escapeHTML(
+                  safeURL(article.link)
+                )}"
+                target="_blank"
+                rel="noopener noreferrer"
+                data-source-click="true"
+                data-article-id="${escapeHTML(
+                  id || ""
+                )}"
+              >
+                Original Source ↗
+              </a>
+            `
+            : ""
+        }
 
       </div>
 
@@ -138,42 +262,49 @@ function articleCard(
 }
 
 
-function renderArticles(
+/* =========================================
+   NEWS LIST RENDER
+========================================= */
+
+function renderNewsList(
   container,
-  articles = []
+  articles,
+  emptyMessage =
+    "No news available."
 ) {
   if (!container) {
     return;
   }
 
   if (
-    !Array.isArray(
-      articles
-    ) ||
+    !Array.isArray(articles) ||
     articles.length === 0
   ) {
-    container.innerHTML =
-      `
-        <div class="empty-state">
-          No news available right now.
-        </div>
-      `;
+    container.innerHTML = `
+      <div class="empty-state">
+        ${escapeHTML(emptyMessage)}
+      </div>
+    `;
 
     return;
   }
 
   container.innerHTML =
     articles
-      .map(articleCard)
+      .map(createNewsCard)
       .join("");
 }
 
 
+/* =========================================
+   LATEST NEWS
+========================================= */
+
 async function loadLatestNews() {
   const container =
-    document.querySelector(
-      "#latestNews"
-    );
+    getElement("latestNews") ||
+    getElement("latest-news") ||
+    getElement("newsGrid");
 
   if (!container) {
     return;
@@ -182,39 +313,46 @@ async function loadLatestNews() {
   try {
 
     const data =
-      await fetchJSON(
-        "/api/news?limit=30"
+      await apiRequest(
+        "/news?limit=30"
       );
 
-    renderArticles(
+    const articles =
+      data?.news ||
+      data?.articles ||
+      data?.data ||
+      [];
+
+    renderNewsList(
       container,
-      data.news ||
-        data.articles ||
-        []
+      articles,
+      "No latest news available yet."
     );
 
   } catch (error) {
 
     console.error(
-      "Latest news error:",
-      error
+      "❌ Latest news error:",
+      error.message
     );
 
-    container.innerHTML =
-      `
-        <div class="empty-state">
-          Unable to load latest news.
-        </div>
-      `;
+    container.innerHTML = `
+      <div class="empty-state">
+        Unable to load latest news.
+      </div>
+    `;
   }
 }
 
+
+/* =========================================
+   TRENDING NEWS
+========================================= */
 
 async function loadTrendingNews() {
   const container =
-    document.querySelector(
-      "#trendingNews"
-    );
+    getElement("trendingNews") ||
+    getElement("trending-news");
 
   if (!container) {
     return;
@@ -223,74 +361,111 @@ async function loadTrendingNews() {
   try {
 
     const data =
-      await fetchJSON(
-        "/api/news/trending?limit=6"
+      await apiRequest(
+        "/news/trending?limit=6"
       );
 
-    renderArticles(
+    const articles =
+      data?.news ||
+      data?.articles ||
+      data?.data ||
+      [];
+
+    renderNewsList(
       container,
-      data.news ||
-        data.articles ||
-        []
+      articles,
+      "No trending news available yet."
+    );
+
+    trackAnalytics(
+      "trending_view",
+      {
+        pagePath:
+          window.location.pathname,
+
+        metadata: {
+          count:
+            articles.length,
+        },
+      }
     );
 
   } catch (error) {
 
     console.error(
-      "Trending news error:",
-      error
+      "❌ Trending news error:",
+      error.message
     );
 
-    container.innerHTML =
-      `
-        <div class="empty-state">
-          Unable to load trending news.
-        </div>
-      `;
+    container.innerHTML = `
+      <div class="empty-state">
+        Unable to load trending news.
+      </div>
+    `;
   }
 }
 
 
-async function loadNewsCount() {
-  const element =
-    document.querySelector(
-      "#newsCount"
-    );
+/* =========================================
+   NEWS COUNT
+========================================= */
 
-  if (!element) {
+async function loadNewsCount() {
+  const elements = [
+    getElement("newsCount"),
+    getElement("articleCount"),
+    getElement("totalNews"),
+  ].filter(Boolean);
+
+  if (
+    elements.length === 0
+  ) {
     return;
   }
 
   try {
 
     const data =
-      await fetchJSON(
-        "/api/news/count"
+      await apiRequest(
+        "/news/count"
       );
 
-    element.textContent =
-      Number(
-        data.count || 0
-      ).toLocaleString();
+    const count =
+      data?.count ??
+      data?.total ??
+      0;
+
+    elements.forEach(
+      (element) => {
+        element.textContent =
+          Number(count).toLocaleString();
+      }
+    );
 
   } catch (error) {
 
     console.error(
-      "News count error:",
-      error
+      "❌ News count error:",
+      error.message
     );
 
-    element.textContent =
-      "—";
+    elements.forEach(
+      (element) => {
+        element.textContent =
+          "—";
+      }
+    );
   }
 }
 
+
+/* =========================================
+   CATEGORY LIST
+========================================= */
 
 async function loadCategories() {
   const container =
-    document.querySelector(
-      "#categoryButtons"
-    );
+    getElement("categories");
 
   if (!container) {
     return;
@@ -299,19 +474,35 @@ async function loadCategories() {
   try {
 
     const data =
-      await fetchJSON(
-        "/api/news/categories"
+      await apiRequest(
+        "/news/categories"
       );
 
     const categories =
-      data.categories ||
-      data.data ||
+      data?.categories ||
+      data?.data ||
       [];
 
     if (
-      !Array.isArray(
-        categories
-      )
+      !Array.isArray(categories) ||
+      categories.length === 0
+    ) {
+      return;
+    }
+
+    /*
+      If the homepage already has
+      category buttons, keep them.
+      Otherwise create them.
+    */
+
+    const existingButtons =
+      container.querySelectorAll(
+        "[data-category]"
+      );
+
+    if (
+      existingButtons.length > 0
     ) {
       return;
     }
@@ -320,79 +511,57 @@ async function loadCategories() {
       categories
         .map((item) => {
 
-          const name =
-            typeof item ===
-            "string"
+          const category =
+            typeof item === "string"
               ? item
               : item.category;
 
-          const count =
-            typeof item ===
-            "object"
-              ? item.count
-              : null;
-
           return `
             <button
+              type="button"
               class="category-button"
               data-category="${escapeHTML(
-                name
+                category
               )}"
             >
               ${escapeHTML(
-                name
+                category
               )}
-
-              ${
-                count !== null
-                  ? `<span>${escapeHTML(
-                      count
-                    )}</span>`
-                  : ""
-              }
             </button>
           `;
         })
         .join("");
 
-    container
-      .querySelectorAll(
-        ".category-button"
-      )
-      .forEach(
-        (button) => {
-
-          button.addEventListener(
-            "click",
-            () => {
-
-              loadCategoryNews(
-                button.dataset.category
-              );
-
-            }
-          );
-
-        }
-      );
-
   } catch (error) {
 
     console.error(
-      "Category error:",
-      error
+      "❌ Categories error:",
+      error.message
     );
   }
 }
 
+
+/* =========================================
+   CATEGORY NEWS
+========================================= */
 
 async function loadCategoryNews(
   category
 ) {
+  const normalized =
+    String(category || "")
+      .trim()
+      .toLowerCase();
+
+  if (!normalized) {
+    return;
+  }
+
   const container =
-    document.querySelector(
-      "#searchResults"
-    );
+    getElement("latestNews") ||
+    getElement("latest-news") ||
+    getElement("newsGrid");
 
   if (!container) {
     return;
@@ -401,527 +570,246 @@ async function loadCategoryNews(
   try {
 
     const data =
-      await fetchJSON(
-        `/api/news/category/${encodeURIComponent(
-          category
+      await apiRequest(
+        `/news/category/${encodeURIComponent(
+          normalized
         )}?limit=50`
       );
 
-    renderArticles(
+    const articles =
+      data?.news ||
+      data?.articles ||
+      data?.data ||
+      [];
+
+    renderNewsList(
       container,
-      data.news ||
-        data.articles ||
-        []
+      articles,
+      `No ${normalized} news available.`
+    );
+
+    trackAnalytics(
+      "category_view",
+      {
+        pagePath:
+          window.location.pathname,
+
+        metadata: {
+          category:
+            normalized,
+
+          count:
+            articles.length,
+        },
+      }
     );
 
   } catch (error) {
 
     console.error(
-      "Category news error:",
-      error
+      "❌ Category news error:",
+      error.message
     );
-
-    container.innerHTML =
-      `
-        <div class="empty-state">
-          Unable to load category news.
-        </div>
-      `;
   }
 }
 
 
-async function searchNews(
+/* =========================================
+   SEARCH
+========================================= */
+
+async function performSearch(
   query
 ) {
+  const searchQuery =
+    String(query || "")
+      .trim();
+
+  if (!searchQuery) {
+    return;
+  }
+
   const container =
-    document.querySelector(
-      "#searchResults"
-    );
+    getElement("searchResults") ||
+    getElement("search-results");
 
   if (!container) {
     return;
   }
 
-  const cleanQuery =
-    String(
-      query || ""
-    ).trim();
-
-  if (!cleanQuery) {
-    container.innerHTML = "";
-    return;
-  }
+  container.innerHTML = `
+    <div class="empty-state">
+      Searching...
+    </div>
+  `;
 
   try {
 
     const data =
-      await fetchJSON(
-        `/api/news/search?q=${encodeURIComponent(
-          cleanQuery
+      await apiRequest(
+        `/news/search?q=${encodeURIComponent(
+          searchQuery
         )}`
       );
 
-    renderArticles(
+    const articles =
+      data?.news ||
+      data?.articles ||
+      data?.results ||
+      data?.data ||
+      [];
+
+    renderNewsList(
       container,
-      data.news ||
-        data.articles ||
-        []
+      articles,
+      "No matching news found."
     );
 
-  } catch (error) {
-
-    console.error(
-      "Search error:",
-      error
-    );
-
-    container.innerHTML =
-      `
-        <div class="empty-state">
-          Search failed.
-        </div>
-      `;
-  }
-}
-
-
-async function registerServiceWorker() {
-  if (
-    !(
-      "serviceWorker" in
-      navigator
-    )
-  ) {
-    console.warn(
-      "Service Worker is not supported."
-    );
-
-    return null;
-  }
-
-  try {
-
-    const registration =
-      await navigator.serviceWorker.register(
-        "/sw.js"
-      );
-
-    console.log(
-      "✅ Push service worker registered"
-    );
-
-    return registration;
-
-  } catch (error) {
-
-    console.error(
-      "❌ Service worker registration failed:",
-      error
-    );
-
-    return null;
-  }
-}
-
-
-function base64ToUint8Array(
-  base64String
-) {
-  const padding =
-    "=".repeat(
-      (4 -
-        (base64String.length %
-          4)) %
-        4
-    );
-
-  const base64 =
-    (
-      base64String +
-      padding
-    )
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-  const rawData =
-    window.atob(
-      base64
-    );
-
-  return Uint8Array.from(
-    [...rawData].map(
-      (char) =>
-        char.charCodeAt(0)
-    )
-  );
-}
-
-
-async function getVapidPublicKey() {
-  const data =
-    await fetchJSON(
-      "/api/push/config"
-    );
-
-  if (
-    !data.publicKey
-  ) {
-    throw new Error(
-      "VAPID public key is not available"
-    );
-  }
-
-  return data.publicKey;
-}
-
-
-async function subscribeToPush(
-  registration
-) {
-  if (
-    !(
-      "PushManager" in
-      window
-    )
-  ) {
-    throw new Error(
-      "Push notifications are not supported."
-    );
-  }
-
-  const permission =
-    await Notification.requestPermission();
-
-  if (
-    permission !==
-    "granted"
-  ) {
-    throw new Error(
-      "Notification permission was not granted."
-    );
-  }
-
-  const publicKey =
-    await getVapidPublicKey();
-
-  let subscription =
-    await registration
-      .pushManager
-      .getSubscription();
-
-  if (!subscription) {
-
-    subscription =
-      await registration
-        .pushManager
-        .subscribe({
-          userVisibleOnly:
-            true,
-
-          applicationServerKey:
-            base64ToUint8Array(
-              publicKey
-            ),
-        });
-  }
-
-  const saved =
-    await fetchJSON(
-      "/api/push/subscribe",
+    trackAnalytics(
+      "search",
       {
-        method: "POST",
+        pagePath:
+          window.location.pathname,
 
-        headers: {
-          "Content-Type":
-            "application/json",
+        metadata: {
+          query:
+            searchQuery.slice(
+              0,
+              200
+            ),
+
+          resultCount:
+            articles.length,
         },
-
-        body: JSON.stringify({
-          subscription:
-            subscription.toJSON(),
-
-          preferences: {
-            breakingNews:
-              true,
-
-            trendingNews:
-              true,
-
-            frequencyLimit:
-              10,
-          },
-        }),
       }
     );
 
-  currentPushSubscription =
-    subscription;
+  } catch (error) {
 
-  console.log(
-    "🔔 Push subscription saved:",
-    saved
-  );
-
-  return subscription;
-}
-
-
-async function unsubscribeFromPush() {
-
-  if (
-    !currentPushSubscription
-  ) {
-
-    const registration =
-      await navigator
-        .serviceWorker
-        .getRegistration("/");
-
-    if (registration) {
-
-      currentPushSubscription =
-        await registration
-          .pushManager
-          .getSubscription();
-
-    }
-  }
-
-  if (
-    !currentPushSubscription
-  ) {
-    return;
-  }
-
-  const endpoint =
-    currentPushSubscription
-      .endpoint;
-
-  await fetchJSON(
-    "/api/push/unsubscribe",
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-
-      body: JSON.stringify({
-        endpoint,
-      }),
-    }
-  );
-
-  await currentPushSubscription
-    .unsubscribe();
-
-  currentPushSubscription =
-    null;
-
-}
-
-
-async function updateNotificationPreferences(
-  preferences
-) {
-  if (
-    !currentPushSubscription
-  ) {
-    return;
-  }
-
-  await fetchJSON(
-    "/api/push/preferences",
-    {
-      method: "PATCH",
-
-      headers: {
-        "Content-Type":
-          "application/json",
-      },
-
-      body: JSON.stringify({
-        endpoint:
-          currentPushSubscription
-            .endpoint,
-
-        preferences,
-      }),
-    }
-  );
-}
-
-
-function setupPushUI(
-  registration
-) {
-  const button =
-    document.querySelector(
-      "#enableNotifications"
+    console.error(
+      "❌ Search error:",
+      error.message
     );
 
-  if (!button) {
-    return;
+    container.innerHTML = `
+      <div class="empty-state">
+        Search could not be completed.
+      </div>
+    `;
   }
-
-  button.addEventListener(
-    "click",
-    async () => {
-
-      try {
-
-        button.disabled =
-          true;
-
-        button.textContent =
-          "Enabling...";
-
-        await subscribeToPush(
-          registration
-        );
-
-        await updateNotificationPreferences(
-          {
-            breakingNews:
-              true,
-
-            trendingNews:
-              true,
-
-            frequencyLimit:
-              10,
-          }
-        );
-
-        button.textContent =
-          "Notifications ON";
-
-      } catch (error) {
-
-        console.error(
-          "Push setup error:",
-          error
-        );
-
-        button.textContent =
-          "Enable Notifications";
-
-        alert(
-          error.message
-        );
-
-      } finally {
-
-        button.disabled =
-          false;
-
-      }
-    }
-  );
 }
 
 
-async function setupPushNotifications() {
-
-  const registration =
-    await registerServiceWorker();
-
-  if (!registration) {
-    return;
-  }
-
-  setupPushUI(
-    registration
-  );
-}
-
-
-function setupMobileMenu() {
-
-  const button =
-    document.querySelector(
-      "#menuToggle"
-    );
-
-  const nav =
-    document.querySelector(
-      "#mainNav"
-    );
-
-  if (
-    !button ||
-    !nav
-  ) {
-    return;
-  }
-
-  button.addEventListener(
-    "click",
-    () => {
-
-      nav.classList.toggle(
-        "open"
-      );
-
-    }
-  );
-}
-
+/* =========================================
+   SEARCH FORM
+========================================= */
 
 function setupSearch() {
-
-  const form =
-    document.querySelector(
-      "#searchForm"
+  const forms =
+    document.querySelectorAll(
+      "form"
     );
 
-  const input =
-    document.querySelector(
-      "#searchInput"
-    );
+  forms.forEach(
+    (form) => {
 
-  if (
-    !form ||
-    !input
-  ) {
-    return;
-  }
+      const input =
+        form.querySelector(
+          'input[type="search"]'
+        ) ||
+        form.querySelector(
+          'input[name="q"]'
+        );
 
-  form.addEventListener(
-    "submit",
-    (event) => {
+      if (!input) {
+        return;
+      }
 
-      event.preventDefault();
+      form.addEventListener(
+        "submit",
+        (event) => {
 
-      searchNews(
-        input.value
+          event.preventDefault();
+
+          performSearch(
+            input.value
+          );
+        }
       );
-
     }
   );
 }
 
 
-async function initializeApp() {
+/* =========================================
+   CATEGORY BUTTONS
+========================================= */
 
-  setupMobileMenu();
+function setupCategoryButtons() {
+  document.addEventListener(
+    "click",
+    (event) => {
 
-  setupSearch();
+      const button =
+        event.target.closest(
+          "[data-category]"
+        );
 
-  await Promise.all([
-    loadLatestNews(),
-    loadTrendingNews(),
-    loadNewsCount(),
-    loadCategories(),
-  ]);
+      if (!button) {
+        return;
+      }
 
-  setupPushNotifications();
+      const category =
+        button.dataset.category;
+
+      if (!category) {
+        return;
+      }
+
+      loadCategoryNews(
+        category
+      );
+    }
+  );
 }
 
 
-document.addEventListener(
-  "DOMContentLoaded",
-  initializeApp
-);
+/* =========================================
+   ARTICLE CLICK ANALYTICS
+========================================= */
+
+function setupArticleAnalytics() {
+  document.addEventListener(
+    "click",
+    (event) => {
+
+      const link =
+        event.target.closest(
+          "[data-article-id]"
+        );
+
+      if (!link) {
+        return;
+      }
+
+      const articleId =
+        link.dataset.articleId;
+
+      if (!articleId) {
+        return;
+      }
+
+      trackAnalytics(
+        "article_view",
+        {
+          articleId,
+
+          pagePath:
+            window.location.pathname,
+
+          metadata: {
+            target:
+              link.getAttribute(
+                "href"
+              ),
+          },
