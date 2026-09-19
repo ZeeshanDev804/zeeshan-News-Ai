@@ -1,86 +1,97 @@
 import express from "express";
 
 import {
-  sendPushNotification,
-  sendBreakingNewsNotification,
-  sendTrendingNewsNotification,
+  sendGeneralNews,
+  sendBreakingNews,
+  sendTrendingNews,
 } from "../lib/pushSender.js";
 
 const router = express.Router();
+
+function verifyAdminSecret(req) {
+  const secret =
+    process.env.CRON_SECRET;
+
+  if (
+    !secret ||
+    !String(secret).trim()
+  ) {
+    return false;
+  }
+
+  const authorization =
+    String(
+      req.headers.authorization || ""
+    ).trim();
+
+  return (
+    authorization ===
+    `Bearer ${secret}`
+  );
+}
 
 router.post(
   "/send",
   async (req, res) => {
     try {
+      if (!verifyAdminSecret(req)) {
+        return res.status(401).json({
+          success: false,
+          error:
+            "Unauthorized",
+        });
+      }
+
       const db =
         req.app.locals.db;
 
       const {
+        type = "general",
         title,
         body,
         url,
-        type,
+        tag,
       } = req.body || {};
 
-      const notificationType =
-        String(
-          type || "general"
-        )
-          .trim()
-          .toLowerCase();
+      const payload = {
+        title,
+        body,
+        url,
+        tag,
+      };
 
-      let report;
+      let result;
 
-      if (
-        notificationType ===
-        "breaking"
-      ) {
-        report =
-          await sendBreakingNewsNotification(
+      if (type === "breaking") {
+        result =
+          await sendBreakingNews(
             db,
-            title,
-            body,
-            url || "/"
+            payload
           );
-
       } else if (
-        notificationType ===
-        "trending"
+        type === "trending"
       ) {
-        report =
-          await sendTrendingNewsNotification(
+        result =
+          await sendTrendingNews(
             db,
-            title,
-            body,
-            url || "/"
+            payload
           );
-
       } else {
-        report =
-          await sendPushNotification(
+        result =
+          await sendGeneralNews(
             db,
-            {
-              title,
-              body,
-              url:
-                url || "/",
-            },
-            "general"
+            payload
           );
       }
 
-      res.json({
-        success: true,
-        report,
-      });
-
+      res.json(result);
     } catch (error) {
       console.error(
-        "❌ Push send error:",
+        "❌ Push admin send error:",
         error.message
       );
 
-      res.status(400).json({
+      res.status(500).json({
         success: false,
         error:
           error.message,
