@@ -5,6 +5,11 @@ import {
   getAdminAuditStatus,
 } from "../lib/adminAuditLog.js";
 
+import {
+  cleanupAdminAuditLogs,
+  getAdminAuditRetentionStatus,
+} from "../lib/adminAuditRetention.js";
+
 const router =
   express.Router();
 
@@ -18,7 +23,12 @@ router.get(
     try {
       res.json({
         success: true,
-        ...getAdminAuditStatus(),
+
+        audit:
+          getAdminAuditStatus(),
+
+        retention:
+          getAdminAuditRetentionStatus(),
       });
     } catch (error) {
       console.error(
@@ -65,8 +75,10 @@ router.get(
 
       res.json({
         success: true,
+
         count:
           logs.length,
+
         logs,
       });
     } catch (error) {
@@ -79,6 +91,45 @@ router.get(
         success: false,
         error:
           "Unable to load admin audit logs",
+      });
+    }
+  }
+);
+
+/* =========================
+   AUDIT CLEANUP
+========================= */
+
+router.post(
+  "/cleanup",
+  async (req, res) => {
+    try {
+      const db =
+        req.app.locals.db;
+
+      const result =
+        await cleanupAdminAuditLogs(
+          db
+        );
+
+      res.json({
+        success: true,
+
+        message:
+          "Admin audit cleanup completed",
+
+        ...result,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Admin audit cleanup error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Unable to cleanup admin audit logs",
       });
     }
   }
