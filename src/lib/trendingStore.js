@@ -1,5 +1,10 @@
 import {
   calculateTrendingScore,
+  calculateRecencyScore,
+  calculateSourceScore,
+  calculateEngagementScore,
+  calculateVelocityScore,
+  calculateUniquenessScore,
   getTrendLevel,
 } from "./trendingIntelligence.js";
 
@@ -10,36 +15,80 @@ import {
 export async function ensureTrendingTable(
   db
 ) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS article_trending_scores (
       id BIGSERIAL PRIMARY KEY,
+
       article_id INTEGER NOT NULL,
-      trending_score NUMERIC(8,2) NOT NULL DEFAULT 0,
-      trend_level TEXT NOT NULL DEFAULT 'normal',
-      recency_score NUMERIC(8,2) NOT NULL DEFAULT 0,
-      source_score NUMERIC(8,2) NOT NULL DEFAULT 0,
-      engagement_score NUMERIC(8,2) NOT NULL DEFAULT 0,
-      velocity_score NUMERIC(8,2) NOT NULL DEFAULT 0,
-      uniqueness_score NUMERIC(8,2) NOT NULL DEFAULT 0,
-      analyzed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+      trending_score
+        NUMERIC(8,2)
+        NOT NULL DEFAULT 0,
+
+      trend_level
+        TEXT
+        NOT NULL DEFAULT 'normal',
+
+      recency_score
+        NUMERIC(8,2)
+        NOT NULL DEFAULT 0,
+
+      source_score
+        NUMERIC(8,2)
+        NOT NULL DEFAULT 0,
+
+      engagement_score
+        NUMERIC(8,2)
+        NOT NULL DEFAULT 0,
+
+      velocity_score
+        NUMERIC(8,2)
+        NOT NULL DEFAULT 0,
+
+      uniqueness_score
+        NUMERIC(8,2)
+        NOT NULL DEFAULT 0,
+
+      analyzed_at
+        TIMESTAMP
+        DEFAULT CURRENT_TIMESTAMP,
+
+      updated_at
+        TIMESTAMP
+        DEFAULT CURRENT_TIMESTAMP,
+
       UNIQUE(article_id)
     )
   `);
 
   await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_trending_score
-    ON article_trending_scores(trending_score DESC)
+    CREATE INDEX IF NOT EXISTS
+    idx_trending_score
+    ON article_trending_scores(
+      trending_score DESC
+    )
   `);
 
   await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_trending_level
-    ON article_trending_scores(trend_level)
+    CREATE INDEX IF NOT EXISTS
+    idx_trending_level
+    ON article_trending_scores(
+      trend_level
+    )
   `);
 
   await db.query(`
-    CREATE INDEX IF NOT EXISTS idx_trending_updated
-    ON article_trending_scores(updated_at DESC)
+    CREATE INDEX IF NOT EXISTS
+    idx_trending_updated
+    ON article_trending_scores(
+      updated_at DESC
+    )
   `);
 }
 
@@ -51,6 +100,12 @@ export async function saveTrendingScore(
   db,
   article
 ) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
   await ensureTrendingTable(
     db
   );
@@ -65,29 +120,19 @@ export async function saveTrendingScore(
     );
   }
 
-  const analyzed =
+  const trendingScore =
     calculateTrendingScore(
       article
     );
 
-  const recency =
+  const publishedAt =
     article?.published_at ??
     article?.publishedAt ??
     article?.created_at;
 
-  const {
-    calculateRecencyScore,
-    calculateSourceScore,
-    calculateEngagementScore,
-    calculateVelocityScore,
-    calculateUniquenessScore,
-  } = await import(
-    "./trendingIntelligence.js"
-  );
-
   const recencyScore =
     calculateRecencyScore(
-      recency
+      publishedAt
     );
 
   const sourceScore =
@@ -112,7 +157,7 @@ export async function saveTrendingScore(
 
   const trendLevel =
     getTrendLevel(
-      analyzed
+      trendingScore
     );
 
   const result =
@@ -130,6 +175,7 @@ export async function saveTrendingScore(
         analyzed_at,
         updated_at
       )
+
       VALUES (
         $1,
         $2,
@@ -142,8 +188,13 @@ export async function saveTrendingScore(
         CURRENT_TIMESTAMP,
         CURRENT_TIMESTAMP
       )
-      ON CONFLICT (article_id)
+
+      ON CONFLICT (
+        article_id
+      )
+
       DO UPDATE SET
+
         trending_score =
           EXCLUDED.trending_score,
 
@@ -175,7 +226,7 @@ export async function saveTrendingScore(
       `,
       [
         articleId,
-        analyzed,
+        trendingScore,
         trendLevel,
         recencyScore,
         sourceScore,
@@ -189,13 +240,19 @@ export async function saveTrendingScore(
 }
 
 /* =========================
-   GET TRENDING
+   GET STORED TRENDING
 ========================= */
 
 export async function getStoredTrendingArticles(
   db,
   limit = 20
 ) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
   await ensureTrendingTable(
     db
   );
@@ -215,20 +272,26 @@ export async function getStoredTrendingArticles(
       SELECT
         ts.*,
 
-        na.title,
-        na.category,
-        na.published_at
+        a.title,
+
+        a.source,
+
+        a.link,
+
+        a.category,
+
+        a.published_at
 
       FROM article_trending_scores ts
 
-      LEFT JOIN news_articles na
-        ON na.id = ts.article_id
+      LEFT JOIN articles a
+        ON a.id = ts.article_id
 
       WHERE
         COALESCE(
-          na.status,
-          'published'
-        ) = 'published'
+          a.legal_hold,
+          FALSE
+        ) = FALSE
 
       ORDER BY
         ts.trending_score DESC
@@ -249,6 +312,12 @@ export async function getStoredTrendingScore(
   db,
   articleId
 ) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
   await ensureTrendingTable(
     db
   );
@@ -280,6 +349,9 @@ export function getTrendingStoreStatus() {
 
     table:
       "article_trending_scores",
+
+    sourceTable:
+      "articles",
 
     databasePersistence:
       true,
