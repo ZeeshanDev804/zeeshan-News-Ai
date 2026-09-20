@@ -29,7 +29,6 @@ import {
 
 import {
   getAdminAuditRetentionStatus,
-  cleanupAdminAuditLogs,
 } from "./src/lib/adminAuditRetention.js";
 
 import newsRoutes from "./src/routes/newsRoutes.js";
@@ -49,6 +48,7 @@ import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.
 import engagementRoutes from "./src/routes/engagementRoutes.js";
 import sitemapRoutes from "./src/routes/sitemapRoutes.js";
 import adminAuditRoutes from "./src/routes/adminAuditRoutes.js";
+import trendingRoutes from "./src/routes/trendingRoutes.js";
 
 import {
   verifyCronRequest,
@@ -218,6 +218,7 @@ app.get(
           dashboard: true,
           sourceMonitoring: true,
           engagement: true,
+          trendingIntelligence: true,
           seo: true,
           legalPages: true,
           security: true,
@@ -270,6 +271,15 @@ app.get(
 app.use(
   "/api/news",
   newsRoutes
+);
+
+/* =========================
+   PUBLIC TRENDING API
+========================= */
+
+app.use(
+  "/api/trending",
+  trendingRoutes
 );
 
 /* =========================
@@ -705,6 +715,9 @@ const server =
       );
       console.log(
         "🧹 Audit retention: enabled"
+      );
+      console.log(
+        "📈 Trending intelligence: enabled"
       );
       console.log(
         "📰 News API: enabled"
