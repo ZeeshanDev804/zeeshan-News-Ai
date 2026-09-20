@@ -37,6 +37,10 @@ import {
   adminAuthStatus,
 } from "./src/middleware/adminAuthMiddleware.js";
 
+import {
+  getAdminSecurityStatus,
+} from "./src/lib/adminSecurity.js";
+
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
 import {
@@ -235,6 +239,9 @@ app.get(
 
           adminAuth:
             adminAuthStatus(),
+
+          adminSecurity:
+            getAdminSecurityStatus(),
         },
 
         scheduler,
@@ -281,8 +288,7 @@ app.use(
 );
 
 /* =========================
-   ADMIN AUTHENTICATION
-   PUSH ADMIN
+   ADMIN PUSH
 ========================= */
 
 app.use(
@@ -508,7 +514,7 @@ app.get(
 
       return res.status(500).json({
         success: false,
-        error: message,
+        error: error.message,
       });
     }
   }
