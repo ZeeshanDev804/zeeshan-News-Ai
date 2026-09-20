@@ -2,6 +2,10 @@ import {
   refreshTrendingScores,
 } from "./trendingAutomation.js";
 
+/* =========================
+   RUN TRENDING CRON
+========================= */
+
 export async function runTrendingCron(
   db
 ) {
@@ -32,11 +36,21 @@ export async function runTrendingCron(
     );
 
     console.log(
-      `📊 Processed: ${result.processed}`
+      `📊 Total articles: ${
+        result.totalArticles || 0
+      }`
     );
 
     console.log(
-      `❌ Failed: ${result.failed}`
+      `📊 Processed: ${
+        result.processed || 0
+      }`
+    );
+
+    console.log(
+      `❌ Failed: ${
+        result.failed || 0
+      }`
     );
 
     return {
@@ -46,11 +60,27 @@ export async function runTrendingCron(
       type:
         "trending-refresh",
 
+      source:
+        "articles",
+
+      destination:
+        "article_trending_scores",
+
       startedAt,
 
       completedAt,
 
-      ...result,
+      totalArticles:
+        result.totalArticles || 0,
+
+      processed:
+        result.processed || 0,
+
+      failed:
+        result.failed || 0,
+
+      errors:
+        result.errors || [],
     };
   } catch (error) {
     console.error(
@@ -64,20 +94,34 @@ export async function runTrendingCron(
       type:
         "trending-refresh",
 
+      source:
+        "articles",
+
+      destination:
+        "article_trending_scores",
+
       startedAt,
 
       completedAt:
         new Date().toISOString(),
 
+      totalArticles: 0,
+
       processed: 0,
 
       failed: 0,
+
+      errors: [],
 
       error:
         error.message,
     };
   }
 }
+
+/* =========================
+   TRENDING CRON STATUS
+========================= */
 
 export function getTrendingCronStatus() {
   return {
@@ -87,12 +131,21 @@ export function getTrendingCronStatus() {
       "Trending Score Refresh",
 
     source:
-      "news_articles",
+      "articles",
 
     destination:
       "article_trending_scores",
 
     automatic:
+      true,
+
+    maximumArticlesPerRun:
+      500,
+
+    legalHoldProtection:
+      true,
+
+    legalReviewProtection:
       true,
 
     fakeEngagement:
