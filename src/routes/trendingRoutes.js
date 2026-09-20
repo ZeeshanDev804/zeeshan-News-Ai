@@ -6,6 +6,14 @@ import {
   getTrendingIntelligenceStatus,
 } from "../lib/trendingIntelligence.js";
 
+import {
+  ensureTrendingTable,
+  saveTrendingScore,
+  getStoredTrendingArticles,
+  getStoredTrendingScore,
+  getTrendingStoreStatus,
+} from "../lib/trendingStore.js";
+
 const router =
   express.Router();
 
@@ -19,7 +27,12 @@ router.get(
     try {
       res.json({
         success: true,
-        ...getTrendingIntelligenceStatus(),
+
+        intelligence:
+          getTrendingIntelligenceStatus(),
+
+        store:
+          getTrendingStoreStatus(),
       });
     } catch (error) {
       console.error(
@@ -37,7 +50,70 @@ router.get(
 );
 
 /* =========================
-   TRENDING ARTICLES
+   STORED TRENDING
+========================= */
+
+router.get(
+  "/stored",
+  async (req, res) => {
+    try {
+      const db =
+        req.app.locals.db;
+
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Database connection is not available",
+        });
+      }
+
+      const limit =
+        Math.min(
+          Math.max(
+            Number(
+              req.query.limit
+            ) || 20,
+            1
+          ),
+          100
+        );
+
+      const articles =
+        await getStoredTrendingArticles(
+          db,
+          limit
+        );
+
+      res.json({
+        success: true,
+
+        count:
+          articles.length,
+
+        trending:
+          articles,
+
+        generatedAt:
+          new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error(
+        "❌ Stored trending error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Unable to load stored trending articles",
+      });
+    }
+  }
+);
+
+/* =========================
+   LIVE TRENDING
 ========================= */
 
 router.get(
@@ -183,6 +259,210 @@ router.get(
         success: false,
         error:
           "Unable to load category trends",
+      });
+    }
+  }
+);
+
+/* =========================
+   CREATE / UPDATE TRENDING
+   SCORE FOR ONE ARTICLE
+========================= */
+
+router.post(
+  "/score/:articleId",
+  async (req, res) => {
+    try {
+      const db =
+        req.app.locals.db;
+
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Database connection is not available",
+        });
+      }
+
+      const articleId =
+        Number(
+          req.params.articleId
+        );
+
+      if (
+        !Number.isInteger(
+          articleId
+        ) ||
+        articleId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Invalid article ID",
+        });
+      }
+
+      const result =
+        await db.query(
+          `
+          SELECT *
+          FROM news_articles
+          WHERE id = $1
+          LIMIT 1
+          `,
+          [articleId]
+        );
+
+      const article =
+        result.rows[0];
+
+      if (!article) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Article not found",
+        });
+      }
+
+      const score =
+        await saveTrendingScore(
+          db,
+          article
+        );
+
+      res.json({
+        success: true,
+
+        score,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Trending score error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Unable to save trending score",
+      });
+    }
+  }
+);
+
+/* =========================
+   GET ONE STORED SCORE
+========================= */
+
+router.get(
+  "/score/:articleId",
+  async (req, res) => {
+    try {
+      const db =
+        req.app.locals.db;
+
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Database connection is not available",
+        });
+      }
+
+      const articleId =
+        Number(
+          req.params.articleId
+        );
+
+      if (
+        !Number.isInteger(
+          articleId
+        ) ||
+        articleId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          error:
+            "Invalid article ID",
+        });
+      }
+
+      const score =
+        await getStoredTrendingScore(
+          db,
+          articleId
+        );
+
+      if (!score) {
+        return res.status(404).json({
+          success: false,
+          error:
+            "Trending score not found",
+        });
+      }
+
+      res.json({
+        success: true,
+
+        score,
+      });
+    } catch (error) {
+      console.error(
+        "❌ Trending score lookup error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Unable to load trending score",
+      });
+    }
+  }
+);
+
+/* =========================
+   INITIALIZE STORE
+========================= */
+
+router.post(
+  "/initialize",
+  async (req, res) => {
+    try {
+      const db =
+        req.app.locals.db;
+
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Database connection is not available",
+        });
+      }
+
+      await ensureTrendingTable(
+        db
+      );
+
+      res.json({
+        success: true,
+
+        message:
+          "Trending store initialized",
+
+        store:
+          getTrendingStoreStatus(),
+      });
+    } catch (error) {
+      console.error(
+        "❌ Trending store initialization error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Unable to initialize trending store",
       });
     }
   }
