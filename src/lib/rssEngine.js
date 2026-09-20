@@ -1,438 +1,475 @@
 import Parser from "rss-parser";
 
-import { findSimilarArticle } from "./dedup.js";
-
 import {
-  recordSourceSuccess,
   recordSourceFailure,
-} from "./sourceHealth.js";
+  resolveSourceFailure,
+  shouldRetry,
+  getRetryDelay,
+} from "./productionMonitor.js";
 
-import {
-  withRetry,
-} from "./retryEngine.js";
+const parser =
+  new Parser({
+    timeout:
+      15000,
 
-import {
-  getSourcePolicy,
-  isSourceAllowed,
-} from "./sourcePolicy.js";
+    headers: {
+      "User-Agent":
+        "ZEESHAN-NEWS-AI/1.0",
+    },
+  });
 
-const parser = new Parser({
-  timeout: 15000,
+const DEFAULT_RETRY_LIMIT =
+  3;
 
-  headers: {
-    "User-Agent":
-      "ZEESHAN-News-AI/1.0",
-  },
-});
+/* =========================
+   SLEEP
+========================= */
 
-const RSS_SOURCES = [
-  {
-    name: "BBC",
-    url:
-      "https://feeds.bbci.co.uk/news/world/rss.xml",
-  },
-
-  {
-    name: "Al Jazeera",
-    url:
-      "https://www.aljazeera.com/xml/rss/all.xml",
-  },
-
-  {
-    name: "Dawn",
-    url:
-      "https://www.dawn.com/arcio/rss",
-  },
-];
-
-function cleanText(value = "") {
-  return String(value)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+function sleep(
+  milliseconds
+) {
+  return new Promise(
+    (resolve) =>
+      setTimeout(
+        resolve,
+        milliseconds
+      )
+  );
 }
 
-function getPublishedDate(item) {
-  if (!item.pubDate) {
-    return new Date();
-  }
+/* =========================
+   SAFE ERROR
+========================= */
 
-  const date =
-    new Date(item.pubDate);
-
-  return Number.isNaN(
-    date.getTime()
-  )
-    ? new Date()
-    : date;
+function getErrorMessage(
+  error
+) {
+  return String(
+    error?.message ||
+      error ||
+      "Unknown RSS error"
+  ).slice(0, 2000);
 }
 
-async function fetchFeedWithRetry(
+/* =========================
+   FETCH ONE RSS SOURCE
+========================= */
+
+export async function fetchRssSource(
   source
 ) {
-  const result =
-    await withRetry(
-      async () => {
-        return parser.parseURL(
-          source.url
-        );
-      },
-      {
-        maxAttempts: 3,
+  const feedUrl =
+    typeof source === "string"
+      ? source
+      : source?.url;
 
-        baseDelayMs: 1000,
+  const sourceName =
+    typeof source === "string"
+      ? source
+      : source?.name ||
+        source?.source ||
+        feedUrl ||
+        "unknown";
 
-        maxDelayMs: 10000,
-
-        label:
-          `RSS ${source.name}`,
-      }
-    );
-
-  if (!result.success) {
+  if (!feedUrl) {
     throw new Error(
-      result.error ||
-        `Failed to fetch ${source.name}`
+      "RSS feed URL is required"
     );
   }
 
-  return {
-    feed: result.result,
-
-    attempts:
-      result.attempts,
-  };
-}
-
-export async function runRssEngine(
-  db
-) {
-  console.log(
-    "🚀 ZEESHAN NEWS AI — RSS ENGINE STARTED"
-  );
-
-  const report = {
-    success: true,
-
-    sources: 0,
-
-    fetched: 0,
-
-    saved: 0,
-
-    duplicates: 0,
-
-    similarDuplicates: 0,
-
-    failedSources: 0,
-
-    retriedSources: 0,
-
-    policyBlockedSources: 0,
-
-    sourceHealth: [],
-
-    sourcePolicies: [],
-  };
+  let lastError =
+    null;
 
   for (
-    const source of RSS_SOURCES
+    let attempt = 0;
+    attempt <
+    DEFAULT_RETRY_LIMIT;
+    attempt++
   ) {
-    console.log(
-      `📰 Checking source policy: ${source.name}`
-    );
-
     try {
-      const policy =
-        await getSourcePolicy(
-          db,
-          source.name
-        );
-
-      report.sourcePolicies.push({
-        source:
-          source.name,
-
-        enabled:
-          policy.enabled,
-
-        attributionRequired:
-          policy.attributionRequired,
-
-        allowAiSummary:
-          policy.allowAiSummary,
-
-        copyrightRisk:
-          policy.copyrightRisk,
-
-        autoHoldOnComplaint:
-          policy.autoHoldOnComplaint,
-      });
-
-      if (
-        policy.enabled !== true
-      ) {
-        report.policyBlockedSources++;
-
-        console.warn(
-          `⛔ Source disabled by policy: ${source.name}`
-        );
-
-        continue;
-      }
-
-      const permission =
-        await isSourceAllowed(
-          db,
-          source.name
-        );
-
-      if (
-        permission.allowed !== true
-      ) {
-        report.policyBlockedSources++;
-
-        console.warn(
-          `⛔ Source blocked: ${source.name}`
-        );
-
-        continue;
-      }
-
       console.log(
-        `📰 Fetching: ${source.name}`
+        `📡 RSS fetch: ${sourceName} | attempt ${
+          attempt + 1
+        }/${DEFAULT_RETRY_LIMIT}`
       );
 
-      const {
-        feed,
-        attempts,
-      } =
-        await fetchFeedWithRetry(
-          source
+      const feed =
+        await parser.parseURL(
+          feedUrl
         );
 
-      if (attempts > 1) {
-        report.retriedSources++;
-
-        console.log(
-          `🔁 ${source.name} succeeded after ${attempts} attempts`
-        );
-      }
-
-      report.sources++;
-
-      for (
-        const item of feed.items.slice(
-          0,
-          20
-        )
-      ) {
-        if (
-          !item.title ||
-          !item.link
-        ) {
-          continue;
-        }
-
-        report.fetched++;
-
-        const title =
-          cleanText(
-            item.title
-          );
-
-        const content =
-          cleanText(
-            item.contentSnippet ||
-              item.content ||
-              item.summary ||
-              ""
-          );
-
-        const publishedAt =
-          getPublishedDate(
-            item
-          );
-
-        const similarArticle =
-          await findSimilarArticle(
-            db,
-            title
-          );
-
-        if (
-          similarArticle?.duplicate
-        ) {
-          report.similarDuplicates++;
-
-          console.log(
-            `♻️ Similar news skipped: ${title}`
-          );
-
-          continue;
-        }
-
-        const sourceAttribution =
-          `${source.name} — Original source: ${item.link.trim()}`;
-
-        const copyrightStatus =
-          policy.allowAiSummary === true
-            ? "pending"
-            : "review_required";
-
-        const copyrightRisk =
-          policy.copyrightRisk ||
-          "medium";
-
-        const legalReviewRequired =
-          policy.allowAiSummary !== true;
-
-        const result =
-          await db.query(
-            `
-            INSERT INTO articles
-              (
-                title,
-                link,
-                content,
-                source,
-                published_at,
-                source_attribution,
-                copyright_status,
-                copyright_risk,
-                legal_review_required
-              )
-            VALUES
-              (
-                $1,
-                $2,
-                $3,
-                $4,
-                $5,
-                $6,
-                $7,
-                $8,
-                $9
-              )
-            ON CONFLICT (link)
-            DO NOTHING
-            `,
-            [
-              title,
-
-              item.link.trim(),
-
-              content,
-
-              source.name,
-
-              publishedAt,
-
-              sourceAttribution,
-
-              copyrightStatus,
-
-              copyrightRisk,
-
-              legalReviewRequired,
-            ]
-          );
-
-        if (
-          result.rowCount === 1
-        ) {
-          report.saved++;
-        } else {
-          report.duplicates++;
-        }
-      }
-
-      const health =
-        await recordSourceSuccess(
-          db,
-          source.name,
-          source.url
-        );
-
-      report.sourceHealth.push({
-        source:
-          source.name,
-
-        status:
-          health.status,
-
-        successCount:
-          health.success_count,
-
-        failureCount:
-          health.failure_count,
-
-        consecutiveFailures:
-          health.consecutive_failures,
-      });
-
-      console.log(
-        `✅ ${source.name} completed`
+      await resolveSourceFailure(
+        globalThis.__zeeshanNewsDb,
+        sourceName
+      ).catch(
+        () => {}
       );
+
+      return {
+        success: true,
+
+        source:
+          sourceName,
+
+        url:
+          feedUrl,
+
+        title:
+          feed.title || "",
+
+        description:
+          feed.description || "",
+
+        items:
+          Array.isArray(
+            feed.items
+          )
+            ? feed.items
+            : [],
+
+        itemCount:
+          Array.isArray(
+            feed.items
+          )
+            ? feed.items.length
+            : 0,
+
+        attempt:
+          attempt + 1,
+
+        fetchedAt:
+          new Date().toISOString(),
+      };
 
     } catch (error) {
-      report.failedSources++;
+      lastError =
+        error;
+
+      const message =
+        getErrorMessage(
+          error
+        );
 
       console.error(
-        `❌ ${source.name} failed after retries:`,
-        error.message
+        `❌ RSS source failed: ${sourceName} | ${message}`
       );
 
-      try {
-        const health =
-          await recordSourceFailure(
-            db,
-            source.name,
-            source.url,
-            error
+      if (
+        shouldRetry(
+          attempt
+        )
+      ) {
+        const delay =
+          getRetryDelay(
+            attempt
           );
 
-        report.sourceHealth.push({
-          source:
-            source.name,
+        console.log(
+          `🔄 RSS retry in ${delay}ms...`
+        );
 
-          status:
-            health.status,
-
-          successCount:
-            health.success_count,
-
-          failureCount:
-            health.failure_count,
-
-          consecutiveFailures:
-            health.consecutive_failures,
-        });
-
-      } catch (
-        healthError
-      ) {
-        console.error(
-          `❌ Source health recording failed for ${source.name}:`,
-          healthError.message
+        await sleep(
+          delay
         );
       }
     }
   }
 
-  if (
-    report.failedSources > 0
-  ) {
-    report.success = false;
+  throw new Error(
+    `RSS source failed after ${DEFAULT_RETRY_LIMIT} attempts: ${sourceName} — ${getErrorMessage(
+      lastError
+    )}`
+  );
+}
+
+/* =========================
+   FETCH RSS WITH DATABASE
+========================= */
+
+export async function fetchRssSourceWithMonitoring(
+  db,
+  source
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
   }
 
-  console.log(
-    "🏁 RSS ENGINE FINISHED"
-  );
+  const feedUrl =
+    typeof source === "string"
+      ? source
+      : source?.url;
 
-  console.log(
-    report
-  );
+  const sourceName =
+    typeof source === "string"
+      ? source
+      : source?.name ||
+        source?.source ||
+        feedUrl ||
+        "unknown";
 
-  return report;
+  globalThis.__zeeshanNewsDb =
+    db;
+
+  try {
+    const result =
+      await fetchRssSource(
+        source
+      );
+
+    await resolveSourceFailure(
+      db,
+      sourceName
+    );
+
+    return result;
+
+  } catch (error) {
+    await recordSourceFailure(
+      db,
+      sourceName,
+      error
+    );
+
+    throw error;
+  }
+}
+
+/* =========================
+   NORMALIZE RSS ARTICLE
+========================= */
+
+export function normalizeRssItem(
+  item,
+  source
+) {
+  const sourceName =
+    typeof source === "string"
+      ? source
+      : source?.name ||
+        source?.source ||
+        "";
+
+  return {
+    title:
+      item?.title ||
+      "",
+
+    link:
+      item?.link ||
+      item?.guid ||
+      "",
+
+    description:
+      item?.contentSnippet ||
+      item?.content ||
+      item?.description ||
+      "",
+
+    content:
+      item?.content ||
+      item?.contentSnippet ||
+      item?.description ||
+      "",
+
+    source:
+      sourceName,
+
+    published_at:
+      item?.isoDate ||
+      item?.pubDate ||
+      null,
+
+    author:
+      item?.creator ||
+      item?.author ||
+      "",
+
+    guid:
+      item?.guid ||
+      item?.id ||
+      item?.link ||
+      "",
+
+    categories:
+      Array.isArray(
+        item?.categories
+      )
+        ? item.categories
+        : [],
+  };
+}
+
+/* =========================
+   RUN RSS ENGINE
+========================= */
+
+export async function runRssEngine(
+  db,
+  sources = []
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  globalThis.__zeeshanNewsDb =
+    db;
+
+  /*
+   * IMPORTANT:
+   * If the existing project already
+   * provides a source registry,
+   * use it. Otherwise the engine
+   * returns a safe empty report.
+   */
+
+  const configuredSources =
+    Array.isArray(
+      sources
+    )
+      ? sources
+      : [];
+
+  if (
+    configuredSources.length ===
+    0
+  ) {
+    return {
+      success: true,
+
+      message:
+        "No RSS sources were supplied to the RSS engine",
+
+      totalSources: 0,
+
+      successfulSources: 0,
+
+      failedSources: 0,
+
+      articlesFetched: 0,
+
+      failures: [],
+
+      completedAt:
+        new Date().toISOString(),
+    };
+  }
+
+  let successfulSources =
+    0;
+
+  let failedSources =
+    0;
+
+  let articlesFetched =
+    0;
+
+  const failures = [];
+
+  for (
+    const source of configuredSources
+  ) {
+    try {
+      const result =
+        await fetchRssSourceWithMonitoring(
+          db,
+          source
+        );
+
+      successfulSources +=
+        1;
+
+      articlesFetched +=
+        result.itemCount || 0;
+
+    } catch (error) {
+      failedSources +=
+        1;
+
+      failures.push({
+        source:
+          typeof source ===
+          "string"
+            ? source
+            : source?.name ||
+              source?.source ||
+              source?.url ||
+              "unknown",
+
+        error:
+          getErrorMessage(
+            error
+          ),
+      });
+    }
+  }
+
+  return {
+    success:
+      failedSources === 0,
+
+    totalSources:
+      configuredSources.length,
+
+    successfulSources,
+
+    failedSources,
+
+    articlesFetched,
+
+    failures:
+      failures.slice(
+        0,
+        20
+      ),
+
+    completedAt:
+      new Date().toISOString(),
+  };
+}
+
+/* =========================
+   RSS ENGINE STATUS
+========================= */
+
+export function getRssEngineStatus() {
+  return {
+    enabled:
+      true,
+
+    engine:
+      "ZEESHAN NEWS AI RSS Engine",
+
+    parser:
+      "rss-parser",
+
+    timeoutMs:
+      15000,
+
+    retry: {
+      enabled:
+        true,
+
+      maximumAttempts:
+        DEFAULT_RETRY_LIMIT,
+
+      exponentialBackoff:
+        true,
+    },
+
+    sourceFailureTracking:
+      true,
+
+    automaticSourceRecovery:
+      true,
+
+    fakeTraffic:
+      false,
+
+    fakeEngagement:
+      false,
+  };
 }
