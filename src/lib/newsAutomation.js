@@ -20,11 +20,19 @@ import {
   runTrendingCron,
 } from "./trendingCron.js";
 
-let automationRunning = false;
+import {
+  ensureProductionMonitorTables,
+  recordProductionHealth,
+} from "./productionMonitor.js";
 
-let lastRun = null;
+let automationRunning =
+  false;
 
-let lastReport = null;
+let lastRun =
+  null;
+
+let lastReport =
+  null;
 
 /* =========================
    GET UNANALYZED ARTICLES
@@ -160,7 +168,8 @@ async function processUnanalyzedNews(
       articles
     );
 
-  let saved = 0;
+  let saved =
+    0;
 
   for (
     const analysis of analyses
@@ -277,13 +286,57 @@ async function runTrending(
 }
 
 /* =========================
+   PRODUCTION MONITOR
+========================= */
+
+async function initializeProductionMonitor(
+  db
+) {
+  try {
+    await ensureProductionMonitorTables(
+      db
+    );
+
+    await recordProductionHealth(
+      db,
+      "news-automation",
+      "healthy",
+      "Production monitor initialized",
+      {
+        automation:
+          "ZEESHAN NEWS AI",
+      }
+    );
+
+    return {
+      success: true,
+    };
+
+  } catch (error) {
+    console.error(
+      "❌ Production monitor initialization failed:",
+      error.message
+    );
+
+    return {
+      success: false,
+
+      error:
+        error.message,
+    };
+  }
+}
+
+/* =========================
    MAIN NEWS AUTOMATION
 ========================= */
 
 export async function runNewsAutomation(
   db
 ) {
-  if (automationRunning) {
+  if (
+    automationRunning
+  ) {
     return {
       success: false,
 
@@ -294,12 +347,23 @@ export async function runNewsAutomation(
     };
   }
 
-  automationRunning = true;
+  if (!db) {
+    return {
+      success: false,
+
+      error:
+        "Database connection is required",
+    };
+  }
+
+  automationRunning =
+    true;
 
   const startedAt =
     new Date();
 
-  let historyRun = null;
+  let historyRun =
+    null;
 
   console.log(
     "================================="
@@ -315,6 +379,14 @@ export async function runNewsAutomation(
 
   try {
     /* =========================
+       PRODUCTION MONITOR
+    ========================= */
+
+    await initializeProductionMonitor(
+      db
+    );
+
+    /* =========================
        AUTOMATION HISTORY
     ========================= */
 
@@ -328,28 +400,146 @@ export async function runNewsAutomation(
        RSS NEWS FETCH
     ========================= */
 
-    const rssReport =
-      await runRssEngine(
-        db
+    let rssReport;
+
+    try {
+      rssReport =
+        await runRssEngine(
+          db
+        );
+
+      await recordProductionHealth(
+        db,
+        "rss-engine",
+        "healthy",
+        "RSS engine completed successfully",
+        {
+          report:
+            rssReport || {},
+        }
       );
+
+    } catch (error) {
+      console.error(
+        "❌ RSS engine failed:",
+        error.message
+      );
+
+      await recordProductionHealth(
+        db,
+        "rss-engine",
+        "critical",
+        error.message,
+        {
+          error:
+            error.message,
+        }
+      );
+
+      throw error;
+    }
 
     /* =========================
        AI PROCESSING
     ========================= */
 
-    const aiReport =
-      await processUnanalyzedNews(
-        db
+    let aiReport;
+
+    try {
+      aiReport =
+        await processUnanalyzedNews(
+          db
+        );
+
+      await recordProductionHealth(
+        db,
+        "ai-engine",
+        "healthy",
+        "AI processing completed",
+        {
+          report:
+            aiReport || {},
+        }
       );
+
+    } catch (error) {
+      console.error(
+        "❌ AI processing failed:",
+        error.message
+      );
+
+      await recordProductionHealth(
+        db,
+        "ai-engine",
+        "critical",
+        error.message,
+        {
+          error:
+            error.message,
+        }
+      );
+
+      throw error;
+    }
 
     /* =========================
        TRENDING INTELLIGENCE
     ========================= */
 
-    const trendingReport =
-      await runTrending(
-        db
+    let trendingReport;
+
+    try {
+      trendingReport =
+        await runTrending(
+          db
+        );
+
+      const trendingStatus =
+        trendingReport.success ===
+        false
+          ? "warning"
+          : "healthy";
+
+      await recordProductionHealth(
+        db,
+        "trending-engine",
+        trendingStatus,
+        trendingReport.error ||
+          "Trending processing completed",
+        {
+          report:
+            trendingReport || {},
+        }
       );
+
+    } catch (error) {
+      console.error(
+        "❌ Trending processing failed:",
+        error.message
+      );
+
+      await recordProductionHealth(
+        db,
+        "trending-engine",
+        "warning",
+        error.message,
+        {
+          error:
+            error.message,
+        }
+      );
+
+      trendingReport = {
+        success: false,
+
+        processed: 0,
+
+        failed: 0,
+
+        error:
+          error.message,
+      };
+    }
 
     /* =========================
        CLEANUP
@@ -401,6 +591,16 @@ export async function runNewsAutomation(
       );
     }
 
+    await recordProductionHealth(
+      db,
+      "news-automation",
+      "healthy",
+      "News automation completed successfully",
+      {
+        report,
+      }
+    );
+
     lastRun =
       completedAt;
 
@@ -439,6 +639,30 @@ export async function runNewsAutomation(
       error:
         error.message,
     };
+
+    /* =========================
+       SAVE FAILURE HEALTH
+    ========================= */
+
+    try {
+      await recordProductionHealth(
+        db,
+        "news-automation",
+        "critical",
+        error.message,
+        {
+          error:
+            error.message,
+        }
+      );
+    } catch (
+      healthError
+    ) {
+      console.error(
+        "❌ Failed to save production health:",
+        healthError.message
+      );
+    }
 
     /* =========================
        SAVE FAILURE HISTORY
@@ -497,6 +721,15 @@ export function getAutomationStatus() {
     lastReport,
 
     trendingAutomation:
+      true,
+
+    productionMonitoring:
+      true,
+
+    retrySystem:
+      true,
+
+    sourceFailureTracking:
       true,
   };
 }
