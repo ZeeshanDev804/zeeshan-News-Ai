@@ -24,6 +24,10 @@ import {
   recordAutomationHealth,
 } from "./automationFailureMonitor.js";
 
+import {
+  cleanupAllOperationalLogs,
+} from "./adminAuditRetention.js";
+
 let automationRunning = false;
 let lastRun = null;
 let lastReport = null;
@@ -185,10 +189,10 @@ async function processUnanalyzedNews(
 }
 
 /* =========================
-   CLEANUP
+   ARTICLE CLEANUP
 ========================= */
 
-async function runCleanup(
+async function runArticleCleanup(
   db
 ) {
   try {
@@ -206,7 +210,7 @@ async function runCleanup(
       );
 
     console.log(
-      `🧹 Cleanup completed. Deleted: ${
+      `🧹 Article cleanup completed. Deleted: ${
         report.deleted || 0
       }`
     );
@@ -214,13 +218,76 @@ async function runCleanup(
     return report;
   } catch (error) {
     console.error(
-      "❌ Cleanup failed:",
+      "❌ Article cleanup failed:",
       error.message
     );
 
     return {
       success: false,
       deleted: 0,
+      error:
+        error.message,
+    };
+  }
+}
+
+/* =========================
+   OPERATIONAL LOG CLEANUP
+========================= */
+
+async function runOperationalCleanup(
+  db
+) {
+  try {
+    console.log(
+      "🧽 Running operational log cleanup..."
+    );
+
+    const report =
+      await cleanupAllOperationalLogs(
+        db
+      );
+
+    console.log(
+      `🧽 Operational cleanup completed. Audit deleted: ${
+        report.audit?.deleted || 0
+      }`
+    );
+
+    console.log(
+      `🧽 Health logs deleted: ${
+        report.health?.deleted || 0
+      }`
+    );
+
+    console.log(
+      `🧽 Resolved source failures deleted: ${
+        report.sourceFailures?.deleted || 0
+      }`
+    );
+
+    return report;
+  } catch (error) {
+    console.error(
+      "❌ Operational cleanup failed:",
+      error.message
+    );
+
+    return {
+      success: false,
+
+      audit: {
+        deleted: 0,
+      },
+
+      health: {
+        deleted: 0,
+      },
+
+      sourceFailures: {
+        deleted: 0,
+      },
+
       error:
         error.message,
     };
@@ -303,14 +370,23 @@ async function runRss(
 
     return {
       success: false,
+
       totalSources: 0,
+
       successfulSources: 0,
+
       failedSources: 0,
+
       articlesFetched: 0,
+
       articlesSaved: 0,
+
       duplicates: 0,
+
       skipped: 0,
+
       failures: [],
+
       error:
         error.message,
     };
@@ -327,6 +403,7 @@ export async function runNewsAutomation(
   if (!db) {
     return {
       success: false,
+
       error:
         "Database connection is required",
     };
@@ -337,7 +414,9 @@ export async function runNewsAutomation(
   ) {
     return {
       success: false,
+
       skipped: true,
+
       message:
         "News automation is already running",
     };
@@ -364,7 +443,7 @@ export async function runNewsAutomation(
 
   try {
     /* =========================
-       AUTOMATION HISTORY
+       HISTORY START
     ========================= */
 
     historyRun =
@@ -374,7 +453,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       RSS
+       1. RSS
     ========================= */
 
     const rssReport =
@@ -383,7 +462,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       AI
+       2. AI
     ========================= */
 
     const aiReport =
@@ -392,7 +471,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       TRENDING
+       3. TRENDING
     ========================= */
 
     const trendingReport =
@@ -401,11 +480,20 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       CLEANUP
+       4. ARTICLE CLEANUP
     ========================= */
 
     const cleanupReport =
-      await runCleanup(
+      await runArticleCleanup(
+        db
+      );
+
+    /* =========================
+       5. OPERATIONAL CLEANUP
+    ========================= */
+
+    const operationalCleanupReport =
+      await runOperationalCleanup(
         db
       );
 
@@ -430,10 +518,13 @@ export async function runNewsAutomation(
 
       cleanup:
         cleanupReport,
+
+      operationalCleanup:
+        operationalCleanupReport,
     };
 
     /* =========================
-       SAVE AUTOMATION HISTORY
+       SAVE HISTORY
     ========================= */
 
     if (
@@ -499,8 +590,15 @@ export async function runNewsAutomation(
     );
 
     console.log(
-      `🧹 Cleanup Deleted: ${
+      `🧹 Articles Deleted: ${
         cleanupReport.deleted ||
+        0
+      }`
+    );
+
+    console.log(
+      `🧽 Audit Logs Deleted: ${
+        operationalCleanupReport.audit?.deleted ||
         0
       }`
     );
@@ -527,7 +625,7 @@ export async function runNewsAutomation(
     };
 
     /* =========================
-       SAVE FAILURE HISTORY
+       FAILURE HISTORY
     ========================= */
 
     if (
@@ -551,7 +649,7 @@ export async function runNewsAutomation(
     }
 
     /* =========================
-       SAVE FAILURE HEALTH
+       FAILURE HEALTH
     ========================= */
 
     try {
@@ -606,7 +704,8 @@ export function getAutomationStatus() {
       "Duplicate Check",
       "AI Analysis",
       "Trending Intelligence",
-      "Cleanup",
+      "Article Cleanup",
+      "Operational Log Cleanup",
       "Production Health",
     ],
 
@@ -619,7 +718,10 @@ export function getAutomationStatus() {
     automaticTrending:
       true,
 
-    automaticCleanup:
+    automaticArticleCleanup:
+      true,
+
+    automaticOperationalCleanup:
       true,
 
     productionHealthLogging:
