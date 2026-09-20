@@ -16,11 +16,19 @@ import {
   failAutomationRun,
 } from "./automationHistory.js";
 
+import {
+  runTrendingCron,
+} from "./trendingCron.js";
+
 let automationRunning = false;
 
 let lastRun = null;
 
 let lastReport = null;
+
+/* =========================
+   GET UNANALYZED ARTICLES
+========================= */
 
 async function getUnanalyzedArticles(
   db,
@@ -73,6 +81,10 @@ async function getUnanalyzedArticles(
   return result.rows;
 }
 
+/* =========================
+   SAVE AI RESULT
+========================= */
+
 async function saveAIResult(
   db,
   analysis
@@ -115,6 +127,10 @@ async function saveAIResult(
 
   return true;
 }
+
+/* =========================
+   PROCESS UNANALYZED NEWS
+========================= */
 
 async function processUnanalyzedNews(
   db
@@ -171,6 +187,10 @@ async function processUnanalyzedNews(
   };
 }
 
+/* =========================
+   CLEANUP
+========================= */
+
 async function runCleanup(
   db
 ) {
@@ -212,6 +232,54 @@ async function runCleanup(
   }
 }
 
+/* =========================
+   TRENDING
+========================= */
+
+async function runTrending(
+  db
+) {
+  try {
+    console.log(
+      "📈 Running trending intelligence..."
+    );
+
+    const report =
+      await runTrendingCron(
+        db
+      );
+
+    console.log(
+      `📈 Trending completed. Processed: ${
+        report.processed || 0
+      }`
+    );
+
+    return report;
+
+  } catch (error) {
+    console.error(
+      "❌ Trending failed:",
+      error.message
+    );
+
+    return {
+      success: false,
+
+      processed: 0,
+
+      failed: 0,
+
+      error:
+        error.message,
+    };
+  }
+}
+
+/* =========================
+   MAIN NEWS AUTOMATION
+========================= */
+
 export async function runNewsAutomation(
   db
 ) {
@@ -246,26 +314,55 @@ export async function runNewsAutomation(
   );
 
   try {
+    /* =========================
+       AUTOMATION HISTORY
+    ========================= */
+
     historyRun =
       await createAutomationRun(
         db,
         startedAt
       );
 
+    /* =========================
+       RSS NEWS FETCH
+    ========================= */
+
     const rssReport =
       await runRssEngine(
         db
       );
+
+    /* =========================
+       AI PROCESSING
+    ========================= */
 
     const aiReport =
       await processUnanalyzedNews(
         db
       );
 
+    /* =========================
+       TRENDING INTELLIGENCE
+    ========================= */
+
+    const trendingReport =
+      await runTrending(
+        db
+      );
+
+    /* =========================
+       CLEANUP
+    ========================= */
+
     const cleanupReport =
       await runCleanup(
         db
       );
+
+    /* =========================
+       FINAL REPORT
+    ========================= */
 
     const completedAt =
       new Date();
@@ -283,11 +380,20 @@ export async function runNewsAutomation(
       ai:
         aiReport,
 
+      trending:
+        trendingReport,
+
       cleanup:
         cleanupReport,
     };
 
-    if (historyRun?.id) {
+    /* =========================
+       SAVE HISTORY
+    ========================= */
+
+    if (
+      historyRun?.id
+    ) {
       await completeAutomationRun(
         db,
         historyRun.id,
@@ -334,7 +440,13 @@ export async function runNewsAutomation(
         error.message,
     };
 
-    if (historyRun?.id) {
+    /* =========================
+       SAVE FAILURE HISTORY
+    ========================= */
+
+    if (
+      historyRun?.id
+    ) {
       try {
         await failAutomationRun(
           db,
@@ -371,6 +483,10 @@ export async function runNewsAutomation(
   }
 }
 
+/* =========================
+   AUTOMATION STATUS
+========================= */
+
 export function getAutomationStatus() {
   return {
     running:
@@ -379,5 +495,8 @@ export function getAutomationStatus() {
     lastRun,
 
     lastReport,
+
+    trendingAutomation:
+      true,
   };
 }
