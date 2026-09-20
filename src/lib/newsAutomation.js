@@ -20,6 +20,10 @@ import {
   runTrendingCron,
 } from "./trendingCron.js";
 
+import {
+  recordAutomationHealth,
+} from "./automationFailureMonitor.js";
+
 let automationRunning = false;
 let lastRun = null;
 let lastReport = null;
@@ -32,17 +36,17 @@ async function getUnanalyzedArticles(
   db,
   limit = 20
 ) {
-  const safeLimit = Math.min(
-    Math.max(
-      Number(limit) || 20,
-      1
-    ),
-    50
-  );
+  const safeLimit =
+    Math.min(
+      Math.max(
+        Number(limit) || 20,
+        1
+      ),
+      50
+    );
 
   const result =
-    await db.query(
-      `
+    await db.query(`
       SELECT
         id,
         title,
@@ -71,9 +75,7 @@ async function getUnanalyzedArticles(
         published_at DESC NULLS LAST,
         created_at DESC
       LIMIT $1
-      `,
-      [safeLimit]
-    );
+    `, [safeLimit]);
 
   return result.rows;
 }
@@ -97,8 +99,7 @@ async function saveAIResult(
     analysis.status ===
     "ai_analyzed";
 
-  await db.query(
-    `
+  await db.query(`
     UPDATE articles
     SET
       ai_summary = $1,
@@ -107,27 +108,25 @@ async function saveAIResult(
       is_analyzed = $4,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = $5
-    `,
-    [
-      analysis.summary || "",
+  `, [
+    analysis.summary || "",
 
-      analysis.category ||
-        "world",
+    analysis.category ||
+      "world",
 
-      analysis.sentiment ||
-        "neutral",
+    analysis.sentiment ||
+      "neutral",
 
-      isAIAnalyzed,
+    isAIAnalyzed,
 
-      analysis.articleId,
-    ]
-  );
+    analysis.articleId,
+  ]);
 
   return true;
 }
 
 /* =========================
-   PROCESS UNANALYZED NEWS
+   AI PROCESSING
 ========================= */
 
 async function processUnanalyzedNews(
@@ -280,13 +279,6 @@ async function runRss(
       "📡 Running RSS news engine..."
     );
 
-    /*
-     * Passing only db means
-     * rssEngine automatically
-     * loads its configured/default
-     * RSS sources.
-     */
-
     const report =
       await runRssEngine(
         db
@@ -311,23 +303,14 @@ async function runRss(
 
     return {
       success: false,
-
       totalSources: 0,
-
       successfulSources: 0,
-
       failedSources: 0,
-
       articlesFetched: 0,
-
       articlesSaved: 0,
-
       duplicates: 0,
-
       skipped: 0,
-
       failures: [],
-
       error:
         error.message,
     };
@@ -344,7 +327,6 @@ export async function runNewsAutomation(
   if (!db) {
     return {
       success: false,
-
       error:
         "Database connection is required",
     };
@@ -355,9 +337,7 @@ export async function runNewsAutomation(
   ) {
     return {
       success: false,
-
       skipped: true,
-
       message:
         "News automation is already running",
     };
@@ -394,7 +374,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       1. RSS
+       RSS
     ========================= */
 
     const rssReport =
@@ -403,7 +383,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       2. AI
+       AI
     ========================= */
 
     const aiReport =
@@ -412,7 +392,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       3. TRENDING
+       TRENDING
     ========================= */
 
     const trendingReport =
@@ -421,7 +401,7 @@ export async function runNewsAutomation(
       );
 
     /* =========================
-       4. CLEANUP
+       CLEANUP
     ========================= */
 
     const cleanupReport =
@@ -453,7 +433,7 @@ export async function runNewsAutomation(
     };
 
     /* =========================
-       SAVE HISTORY
+       SAVE AUTOMATION HISTORY
     ========================= */
 
     if (
@@ -463,6 +443,24 @@ export async function runNewsAutomation(
         db,
         historyRun.id,
         report
+      );
+    }
+
+    /* =========================
+       PRODUCTION HEALTH
+    ========================= */
+
+    try {
+      await recordAutomationHealth(
+        db,
+        report
+      );
+    } catch (
+      healthError
+    ) {
+      console.error(
+        "⚠️ Automation health logging failed:",
+        healthError.message
       );
     }
 
@@ -512,6 +510,7 @@ export async function runNewsAutomation(
     );
 
     return report;
+
   } catch (error) {
     const completedAt =
       new Date();
@@ -526,6 +525,10 @@ export async function runNewsAutomation(
       error:
         error.message,
     };
+
+    /* =========================
+       SAVE FAILURE HISTORY
+    ========================= */
 
     if (
       historyRun?.id
@@ -547,6 +550,24 @@ export async function runNewsAutomation(
       }
     }
 
+    /* =========================
+       SAVE FAILURE HEALTH
+    ========================= */
+
+    try {
+      await recordAutomationHealth(
+        db,
+        report
+      );
+    } catch (
+      healthError
+    ) {
+      console.error(
+        "⚠️ Automation failure health logging failed:",
+        healthError.message
+      );
+    }
+
     lastRun =
       completedAt;
 
@@ -559,6 +580,7 @@ export async function runNewsAutomation(
     );
 
     return report;
+
   } finally {
     automationRunning =
       false;
@@ -585,6 +607,7 @@ export function getAutomationStatus() {
       "AI Analysis",
       "Trending Intelligence",
       "Cleanup",
+      "Production Health",
     ],
 
     automaticRSS:
@@ -597,6 +620,9 @@ export function getAutomationStatus() {
       true,
 
     automaticCleanup:
+      true,
+
+    productionHealthLogging:
       true,
 
     fakeTraffic:
