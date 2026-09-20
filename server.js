@@ -27,6 +27,11 @@ import {
   getAdminAuditStatus,
 } from "./src/lib/adminAuditLog.js";
 
+import {
+  getAdminAuditRetentionStatus,
+  cleanupAdminAuditLogs,
+} from "./src/lib/adminAuditRetention.js";
+
 import newsRoutes from "./src/routes/newsRoutes.js";
 import pushRoutes from "./src/routes/pushRoutes.js";
 import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
@@ -220,6 +225,7 @@ app.get(
           rateLimiting: true,
           adminAuthentication: true,
           adminAudit: true,
+          adminAuditRetention: true,
         },
 
         security: {
@@ -237,6 +243,9 @@ app.get(
 
           adminAudit:
             getAdminAuditStatus(),
+
+          adminAuditRetention:
+            getAdminAuditRetentionStatus(),
         },
       });
     } catch (error) {
@@ -693,6 +702,9 @@ const server =
       );
       console.log(
         "📋 Admin audit logging: enabled"
+      );
+      console.log(
+        "🧹 Audit retention: enabled"
       );
       console.log(
         "📰 News API: enabled"
