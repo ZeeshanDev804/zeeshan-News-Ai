@@ -8,11 +8,15 @@ import {
   resolveSourceFailure,
 } from "../lib/productionMonitor.js";
 
+import {
+  getAutomationFailureMonitorStatus,
+} from "../lib/automationFailureMonitor.js";
+
 const router =
   express.Router();
 
 /* =========================
-   STATUS
+   MONITOR STATUS
 ========================= */
 
 router.get(
@@ -24,6 +28,9 @@ router.get(
 
         monitor:
           getProductionMonitorStatus(),
+
+        automation:
+          getAutomationFailureMonitorStatus(),
       });
     } catch (error) {
       console.error(
@@ -73,6 +80,9 @@ router.post(
 
         monitor:
           getProductionMonitorStatus(),
+
+        automation:
+          getAutomationFailureMonitorStatus(),
       });
     } catch (error) {
       console.error(
@@ -91,7 +101,7 @@ router.post(
 );
 
 /* =========================
-   SYSTEM HEALTH
+   PRODUCTION HEALTH
 ========================= */
 
 router.get(
@@ -119,6 +129,12 @@ router.get(
         success: true,
 
         health,
+
+        automation:
+          getAutomationFailureMonitorStatus(),
+
+        generatedAt:
+          new Date().toISOString(),
       });
     } catch (error) {
       console.error(
@@ -201,7 +217,7 @@ router.get(
 );
 
 /* =========================
-   RESOLVE SOURCE
+   RESOLVE SOURCE FAILURE
 ========================= */
 
 router.post(
