@@ -3,7 +3,13 @@ import {
   ensureTrendingTable,
 } from "./trendingStore.js";
 
-export async function refreshTrendingScores(db) {
+/* =========================
+   REFRESH ALL TRENDING SCORES
+========================= */
+
+export async function refreshTrendingScores(
+  db
+) {
   if (!db) {
     throw new Error(
       "Database connection is required"
@@ -12,21 +18,31 @@ export async function refreshTrendingScores(db) {
 
   await ensureTrendingTable(db);
 
-  const result = await db.query(`
-    SELECT *
-    FROM news_articles
-    WHERE
-      COALESCE(
-        status,
-        'published'
-      ) = 'published'
-    ORDER BY
-      COALESCE(
-        published_at,
-        created_at
-      ) DESC
-    LIMIT 500
-  `);
+  const result =
+    await db.query(`
+      SELECT *
+      FROM articles
+
+      WHERE
+        COALESCE(
+          legal_hold,
+          FALSE
+        ) = FALSE
+
+      AND
+        COALESCE(
+          legal_review_required,
+          FALSE
+        ) = FALSE
+
+      ORDER BY
+        COALESCE(
+          published_at,
+          created_at
+        ) DESC
+
+      LIMIT 500
+    `);
 
   const articles =
     result.rows || [];
@@ -53,6 +69,9 @@ export async function refreshTrendingScores(db) {
           article.article_id ??
           null,
 
+        title:
+          article.title || "",
+
         error:
           error.message,
       });
@@ -60,7 +79,8 @@ export async function refreshTrendingScores(db) {
   }
 
   return {
-    success: failed === 0,
+    success:
+      failed === 0,
 
     totalArticles:
       articles.length,
@@ -76,6 +96,10 @@ export async function refreshTrendingScores(db) {
       new Date().toISOString(),
   };
 }
+
+/* =========================
+   REFRESH SINGLE ARTICLE
+========================= */
 
 export async function refreshSingleTrendingScore(
   db,
@@ -97,8 +121,23 @@ export async function refreshSingleTrendingScore(
     await db.query(
       `
       SELECT *
-      FROM news_articles
-      WHERE id = $1
+      FROM articles
+
+      WHERE
+        id = $1
+
+      AND
+        COALESCE(
+          legal_hold,
+          FALSE
+        ) = FALSE
+
+      AND
+        COALESCE(
+          legal_review_required,
+          FALSE
+        ) = FALSE
+
       LIMIT 1
       `,
       [articleId]
@@ -109,7 +148,7 @@ export async function refreshSingleTrendingScore(
 
   if (!article) {
     throw new Error(
-      "Article not found"
+      "Article not found or unavailable for trending"
     );
   }
 
@@ -119,6 +158,10 @@ export async function refreshSingleTrendingScore(
   );
 }
 
+/* =========================
+   TRENDING AUTOMATION STATUS
+========================= */
+
 export function getTrendingAutomationStatus() {
   return {
     enabled: true,
@@ -127,7 +170,10 @@ export function getTrendingAutomationStatus() {
       "ZEESHAN NEWS AI Trending Automation",
 
     source:
-      "news_articles",
+      "articles",
+
+    destination:
+      "article_trending_scores",
 
     maximumArticlesPerRun:
       500,
@@ -136,6 +182,12 @@ export function getTrendingAutomationStatus() {
       true,
 
     automaticRefresh:
+      true,
+
+    legalHoldProtection:
+      true,
+
+    legalReviewProtection:
       true,
 
     fakeEngagement:
