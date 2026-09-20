@@ -32,6 +32,11 @@ import {
   getRateLimitStatus,
 } from "./src/middleware/rateLimitMiddleware.js";
 
+import {
+  adminAuthMiddleware,
+  adminAuthStatus,
+} from "./src/middleware/adminAuthMiddleware.js";
+
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
 import {
@@ -218,6 +223,7 @@ app.get(
           security: true,
           securityHeaders: true,
           rateLimiting: true,
+          adminAuthentication: true,
         },
 
         security: {
@@ -226,6 +232,9 @@ app.get(
 
           rateLimit:
             getRateLimitStatus(),
+
+          adminAuth:
+            adminAuthStatus(),
         },
 
         scheduler,
@@ -271,17 +280,24 @@ app.use(
   pushRoutes
 );
 
+/* =========================
+   ADMIN AUTHENTICATION
+   PUSH ADMIN
+========================= */
+
 app.use(
   "/api/push/admin",
+  adminAuthMiddleware,
   pushAdminRoutes
 );
 
 /* =========================
-   DASHBOARD
+   ADMIN DASHBOARD
 ========================= */
 
 app.use(
   "/api/dashboard",
+  adminAuthMiddleware,
   dashboardRoutes
 );
 
@@ -291,6 +307,7 @@ app.use(
 
 app.use(
   "/api/analytics",
+  adminAuthMiddleware,
   analyticsRoutes
 );
 
@@ -300,6 +317,7 @@ app.use(
 
 app.use(
   "/api/takedown",
+  adminAuthMiddleware,
   takedownRoutes
 );
 
@@ -309,6 +327,7 @@ app.use(
 
 app.use(
   "/api/source-health",
+  adminAuthMiddleware,
   sourceHealthRoutes
 );
 
@@ -318,6 +337,7 @@ app.use(
 
 app.use(
   "/api/automation-history",
+  adminAuthMiddleware,
   automationHistoryRoutes
 );
 
@@ -327,6 +347,7 @@ app.use(
 
 app.use(
   "/api/source-policy",
+  adminAuthMiddleware,
   sourcePolicyRoutes
 );
 
@@ -336,6 +357,7 @@ app.use(
 
 app.use(
   "/api/social-distribution",
+  adminAuthMiddleware,
   socialDistributionRoutes
 );
 
@@ -345,6 +367,7 @@ app.use(
 
 app.use(
   "/api/content-distribution",
+  adminAuthMiddleware,
   contentDistributionRoutes
 );
 
@@ -354,6 +377,7 @@ app.use(
 
 app.use(
   "/api/autopilot",
+  adminAuthMiddleware,
   autoPilotRoutes
 );
 
@@ -363,11 +387,13 @@ app.use(
 
 app.use(
   "/api/ceo-approval",
+  adminAuthMiddleware,
   ceoApprovalRoutes
 );
 
 app.use(
   "/api/ceo-approval-dashboard",
+  adminAuthMiddleware,
   ceoApprovalDashboardRoutes
 );
 
@@ -387,6 +413,7 @@ app.use(
 
 app.post(
   "/api/automation/run",
+  adminAuthMiddleware,
   async (req, res) => {
     try {
       const result =
@@ -418,6 +445,7 @@ app.post(
 
 app.get(
   "/api/automation/status",
+  adminAuthMiddleware,
   (req, res) => {
     try {
       res.json({
@@ -480,7 +508,7 @@ app.get(
 
       return res.status(500).json({
         success: false,
-        error: error.message,
+        error: message,
       });
     }
   }
