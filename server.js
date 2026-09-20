@@ -45,6 +45,11 @@ import {
   getAutomationStatus,
 } from "./src/lib/newsAutomation.js";
 
+import {
+  runScheduledAutomation,
+  getAutomationSchedulerStatus,
+} from "./src/lib/automationScheduler.js";
+
 import newsRoutes from "./src/routes/newsRoutes.js";
 import pushRoutes from "./src/routes/pushRoutes.js";
 import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
@@ -83,10 +88,6 @@ const app =
 const PORT =
   Number(process.env.PORT) || 3000;
 
-/* =========================
-   DATABASE
-========================= */
-
 const {
   Pool,
 } = pg;
@@ -107,10 +108,6 @@ const pool =
 app.locals.db =
   pool;
 
-/* =========================
-   AUTOMATION SERVICE
-========================= */
-
 app.locals.automation = {
   run: async () => {
     return runNewsAutomation(
@@ -118,14 +115,20 @@ app.locals.automation = {
     );
   },
 
+  scheduledRun: async () => {
+    return runScheduledAutomation(
+      pool
+    );
+  },
+
   status: async () => {
     return getAutomationStatus();
   },
-};
 
-/* =========================
-   EXPRESS SECURITY
-========================= */
+  schedulerStatus: async () => {
+    return getAutomationSchedulerStatus();
+  },
+};
 
 app.disable(
   "x-powered-by"
@@ -149,10 +152,6 @@ app.use(
   })
 );
 
-/* =========================
-   SECURITY MIDDLEWARE
-========================= */
-
 app.use(
   securityMiddleware
 );
@@ -167,10 +166,6 @@ app.use(
   })
 );
 
-/* =========================
-   STATIC WEBSITE
-========================= */
-
 app.use(
   express.static(
     path.join(
@@ -181,7 +176,7 @@ app.use(
 );
 
 /* =========================
-   HEALTH
+   BASIC HEALTH
 ========================= */
 
 app.get(
@@ -273,10 +268,14 @@ app.get(
           productionMonitor: true,
           sourceFailureTracking: true,
           retrySystem: true,
+          automationScheduler: true,
         },
 
         automation:
           getAutomationStatus(),
+
+        scheduler:
+          getAutomationSchedulerStatus(),
 
         trendingAutomation:
           getTrendingAutomationStatus(),
@@ -321,7 +320,7 @@ app.get(
 );
 
 /* =========================
-   PUBLIC NEWS API
+   PUBLIC NEWS
 ========================= */
 
 app.use(
@@ -329,18 +328,10 @@ app.use(
   newsRoutes
 );
 
-/* =========================
-   PUBLIC TRENDING API
-========================= */
-
 app.use(
   "/api/trending",
   trendingRoutes
 );
-
-/* =========================
-   PUBLIC PUSH API
-========================= */
 
 app.use(
   "/api/push",
@@ -348,7 +339,7 @@ app.use(
 );
 
 /* =========================
-   ADMIN PUSH
+   ADMIN ROUTES
 ========================= */
 
 app.use(
@@ -357,19 +348,11 @@ app.use(
   pushAdminRoutes
 );
 
-/* =========================
-   ADMIN DASHBOARD
-========================= */
-
 app.use(
   "/api/dashboard",
   adminAuthMiddleware,
   dashboardRoutes
 );
-
-/* =========================
-   ADMIN ANALYTICS
-========================= */
 
 app.use(
   "/api/analytics",
@@ -377,19 +360,11 @@ app.use(
   analyticsRoutes
 );
 
-/* =========================
-   TAKEDOWN / COPYRIGHT
-========================= */
-
 app.use(
   "/api/takedown",
   adminAuthMiddleware,
   takedownRoutes
 );
-
-/* =========================
-   SOURCE HEALTH
-========================= */
 
 app.use(
   "/api/source-health",
@@ -397,19 +372,11 @@ app.use(
   sourceHealthRoutes
 );
 
-/* =========================
-   AUTOMATION HISTORY
-========================= */
-
 app.use(
   "/api/automation-history",
   adminAuthMiddleware,
   automationHistoryRoutes
 );
-
-/* =========================
-   SOURCE POLICY
-========================= */
 
 app.use(
   "/api/source-policy",
@@ -417,19 +384,11 @@ app.use(
   sourcePolicyRoutes
 );
 
-/* =========================
-   SOCIAL DISTRIBUTION
-========================= */
-
 app.use(
   "/api/social-distribution",
   adminAuthMiddleware,
   socialDistributionRoutes
 );
-
-/* =========================
-   CONTENT DISTRIBUTION
-========================= */
 
 app.use(
   "/api/content-distribution",
@@ -437,19 +396,11 @@ app.use(
   contentDistributionRoutes
 );
 
-/* =========================
-   AUTOPILOT
-========================= */
-
 app.use(
   "/api/autopilot",
   adminAuthMiddleware,
   autoPilotRoutes
 );
-
-/* =========================
-   CEO APPROVAL
-========================= */
 
 app.use(
   "/api/ceo-approval",
@@ -457,19 +408,11 @@ app.use(
   ceoApprovalRoutes
 );
 
-/* =========================
-   CEO APPROVAL DASHBOARD
-========================= */
-
 app.use(
   "/api/ceo-approval-dashboard",
   adminAuthMiddleware,
   ceoApprovalDashboardRoutes
 );
-
-/* =========================
-   ADMIN AUDIT LOG
-========================= */
 
 app.use(
   "/api/admin-audit",
@@ -477,19 +420,11 @@ app.use(
   adminAuditRoutes
 );
 
-/* =========================
-   PRODUCTION MONITOR
-========================= */
-
 app.use(
   "/api/production-monitor",
   adminAuthMiddleware,
   productionMonitorRoutes
 );
-
-/* =========================
-   ENGAGEMENT
-========================= */
 
 app.use(
   "/api/engagement",
@@ -497,7 +432,7 @@ app.use(
 );
 
 /* =========================
-   AUTOMATION RUN
+   MANUAL AUTOMATION
 ========================= */
 
 app.post(
@@ -541,13 +476,14 @@ app.get(
   adminAuthMiddleware,
   async (req, res) => {
     try {
-      const status =
-        getAutomationStatus();
-
       res.json({
         success: true,
 
-        ...status,
+        automation:
+          getAutomationStatus(),
+
+        scheduler:
+          getAutomationSchedulerStatus(),
       });
     } catch (error) {
       console.error(
@@ -566,8 +502,8 @@ app.get(
 );
 
 /* =========================
-   CRON AUTOMATION
-   VERCEL CRON USES GET
+   VERCEL CRON
+   EVERY 30 MINUTES
 ========================= */
 
 app.get(
@@ -589,7 +525,7 @@ app.get(
       }
 
       const result =
-        await runNewsAutomation(
+        await runScheduledAutomation(
           pool
         );
 
@@ -600,7 +536,13 @@ app.get(
         source:
           "vercel-cron",
 
+        schedule:
+          "*/30 * * * *",
+
         result,
+
+        scheduler:
+          getAutomationSchedulerStatus(),
 
         timestamp:
           new Date().toISOString(),
@@ -622,7 +564,7 @@ app.get(
 );
 
 /* =========================
-   OPTIONAL POST CRON
+   CRON POST
 ========================= */
 
 app.post(
@@ -644,7 +586,7 @@ app.post(
       }
 
       const result =
-        await runNewsAutomation(
+        await runScheduledAutomation(
           pool
         );
 
@@ -655,7 +597,13 @@ app.post(
         source:
           "cron-post",
 
+        schedule:
+          "*/30 * * * *",
+
         result,
+
+        scheduler:
+          getAutomationSchedulerStatus(),
 
         timestamp:
           new Date().toISOString(),
@@ -711,7 +659,7 @@ app.get(
 );
 
 /* =========================
-   404 HANDLER
+   404
 ========================= */
 
 app.use(
@@ -729,7 +677,7 @@ app.use(
 );
 
 /* =========================
-   GLOBAL ERROR HANDLER
+   GLOBAL ERROR
 ========================= */
 
 app.use(
@@ -841,7 +789,7 @@ const server =
       );
 
       console.log(
-        "⏰ Vercel Cron GET endpoint: enabled"
+        "⏰ Vercel Cron: every 30 minutes"
       );
 
       console.log(
@@ -850,6 +798,10 @@ const server =
 
       console.log(
         "🔄 Source retry system: enabled"
+      );
+
+      console.log(
+        "🧠 Automation scheduler: enabled"
       );
 
       console.log(
@@ -900,17 +852,13 @@ async function shutdown(
 process.on(
   "SIGTERM",
   () =>
-    shutdown(
-      "SIGTERM"
-    )
+    shutdown("SIGTERM")
 );
 
 process.on(
   "SIGINT",
   () =>
-    shutdown(
-      "SIGINT"
-    )
+    shutdown("SIGINT")
 );
 
 export default app;
