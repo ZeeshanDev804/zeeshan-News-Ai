@@ -1,6 +1,7 @@
 const AI_API_KEY =
   process.env.AI_API_KEY ||
-  process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY ||
+  "";
 
 const AI_MODEL =
   process.env.AI_MODEL ||
@@ -9,33 +10,47 @@ const AI_MODEL =
 const GEMINI_API_BASE =
   "https://generativelanguage.googleapis.com/v1beta";
 
-const SYSTEM_INSTRUCTION =
-  "You are the AI engine for ZEESHAN NEWS AI. Process news accurately, neutrally, and concisely. Never invent facts. Do not present unverified claims as facts. Preserve source context and clearly distinguish facts from uncertainty.";
+const SYSTEM_INSTRUCTION = `
+You are the AI engine for ZEESHAN NEWS AI.
+
+Your job is to process news accurately, neutrally, and concisely.
+
+Rules:
+- Never invent facts.
+- Never present unverified claims as confirmed facts.
+- Preserve the original source context.
+- Clearly distinguish facts from uncertainty.
+- Do not copy full source articles.
+- Create original summaries and analysis.
+- Avoid plagiarism.
+- Do not create misleading headlines.
+- Keep important names, dates, numbers, and locations accurate.
+- If information is insufficient, say that it is insufficient.
+`.trim();
+
 
 export function isAIConfigured() {
   return Boolean(
-    AI_API_KEY &&
-    AI_MODEL
+    String(AI_API_KEY).trim() &&
+    String(AI_MODEL).trim()
   );
 }
 
+
 export async function generateAIText(prompt) {
-  if (!AI_API_KEY) {
+  if (!String(AI_API_KEY).trim()) {
     throw new Error(
       "AI_API_KEY is not configured"
     );
   }
 
-  if (!AI_MODEL) {
+  if (!String(AI_MODEL).trim()) {
     throw new Error(
       "AI_MODEL is not configured"
     );
   }
 
-  if (
-    !prompt ||
-    !String(prompt).trim()
-  ) {
+  if (!prompt || !String(prompt).trim()) {
     throw new Error(
       "AI prompt is required"
     );
@@ -49,16 +64,17 @@ export async function generateAIText(prompt) {
       modelName
     )}:generateContent`;
 
-  const response = await fetch(
-    endpoint,
-    {
+
+  const response =
+    await fetch(endpoint, {
       method: "POST",
 
       headers: {
         "Content-Type":
           "application/json",
+
         "x-goog-api-key":
-          AI_API_KEY,
+          String(AI_API_KEY).trim(),
       },
 
       body: JSON.stringify({
@@ -88,8 +104,8 @@ export async function generateAIText(prompt) {
           temperature: 0.2,
         },
       }),
-    }
-  );
+    });
+
 
   if (!response.ok) {
     const errorText =
@@ -100,14 +116,22 @@ export async function generateAIText(prompt) {
     );
   }
 
+
   const data =
     await response.json();
 
+
   const content =
-    data?.candidates?.[0]?.content?.parts
-      ?.map((part) => part?.text || "")
+    data
+      ?.candidates?.[0]
+      ?.content?.parts
+      ?.map(
+        (part) =>
+          part?.text || ""
+      )
       .join("")
       .trim();
+
 
   if (!content) {
     throw new Error(
@@ -115,16 +139,27 @@ export async function generateAIText(prompt) {
     );
   }
 
+
   return content;
 }
+
 
 export function getAIProviderStatus() {
   return {
     enabled: true,
-    provider: "Google Gemini",
-    configured: isAIConfigured(),
-    model: AI_MODEL || null,
+
+    provider:
+      "Google Gemini",
+
+    configured:
+      isAIConfigured(),
+
+    model:
+      AI_MODEL || null,
+
     apiKeyConfigured:
-      Boolean(AI_API_KEY),
+      Boolean(
+        String(AI_API_KEY).trim()
+      ),
   };
 }
