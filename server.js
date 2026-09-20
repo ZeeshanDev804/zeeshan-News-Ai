@@ -35,6 +35,11 @@ import {
   getTrendingAutomationStatus,
 } from "./src/lib/trendingAutomation.js";
 
+import {
+  runNewsAutomation,
+  getAutomationStatus,
+} from "./src/lib/newsAutomation.js";
+
 import newsRoutes from "./src/routes/newsRoutes.js";
 import pushRoutes from "./src/routes/pushRoutes.js";
 import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
@@ -95,6 +100,22 @@ const pool =
 
 app.locals.db =
   pool;
+
+/* =========================
+   AUTOMATION SERVICE
+========================= */
+
+app.locals.automation = {
+  run: async () => {
+    return runNewsAutomation(
+      pool
+    );
+  },
+
+  status: async () => {
+    return getAutomationStatus();
+  },
+};
 
 /* =========================
    EXPRESS SECURITY
@@ -167,8 +188,13 @@ app.get(
 
       res.json({
         success: true,
-        status: "healthy",
-        database: "connected",
+
+        status:
+          "healthy",
+
+        database:
+          "connected",
+
         timestamp:
           new Date().toISOString(),
       });
@@ -180,10 +206,16 @@ app.get(
 
       res.status(503).json({
         success: false,
-        status: "unhealthy",
-        database: "error",
+
+        status:
+          "unhealthy",
+
+        database:
+          "error",
+
         error:
           error.message,
+
         timestamp:
           new Date().toISOString(),
       });
@@ -234,6 +266,9 @@ app.get(
           adminAuditRetention: true,
         },
 
+        automation:
+          getAutomationStatus(),
+
         trendingAutomation:
           getTrendingAutomationStatus(),
 
@@ -265,6 +300,7 @@ app.get(
 
       res.status(500).json({
         success: false,
+
         error:
           "Unable to load system status",
       });
@@ -447,27 +483,15 @@ app.post(
   adminAuthMiddleware,
   async (req, res) => {
     try {
-      const automation =
-        req.app.locals
-          .automation;
-
-      if (
-        !automation ||
-        typeof automation.run !==
-          "function"
-      ) {
-        return res.status(503).json({
-          success: false,
-          error:
-            "Automation service is not available",
-        });
-      }
-
       const result =
-        await automation.run();
+        await runNewsAutomation(
+          pool
+        );
 
       res.json({
-        success: true,
+        success:
+          result.success !== false,
+
         result,
       });
     } catch (error) {
@@ -478,6 +502,7 @@ app.post(
 
       res.status(500).json({
         success: false,
+
         error:
           error.message,
       });
@@ -494,37 +519,13 @@ app.get(
   adminAuthMiddleware,
   async (req, res) => {
     try {
-      const automation =
-        req.app.locals
-          .automation;
-
-      if (
-        !automation
-      ) {
-        return res.status(503).json({
-          success: false,
-          error:
-            "Automation service is not available",
-        });
-      }
-
-      if (
-        typeof automation.status ===
-        "function"
-      ) {
-        const status =
-          await automation.status();
-
-        return res.json({
-          success: true,
-          ...status,
-        });
-      }
+      const status =
+        getAutomationStatus();
 
       res.json({
         success: true,
-        status:
-          "available",
+
+        ...status,
       });
     } catch (error) {
       console.error(
@@ -534,6 +535,7 @@ app.get(
 
       res.status(500).json({
         success: false,
+
         error:
           error.message,
       });
@@ -550,40 +552,33 @@ app.post(
   async (req, res) => {
     try {
       const valid =
-        verifyCronRequest(req);
+        verifyCronRequest(
+          req
+        );
 
       if (!valid) {
         return res.status(401).json({
           success: false,
+
           error:
             "Unauthorized cron request",
         });
       }
 
-      const automation =
-        req.app.locals
-          .automation;
-
-      if (
-        !automation ||
-        typeof automation.run !==
-          "function"
-      ) {
-        return res.status(503).json({
-          success: false,
-          error:
-            "Automation service is not available",
-        });
-      }
-
       const result =
-        await automation.run();
+        await runNewsAutomation(
+          pool
+        );
 
       res.json({
-        success: true,
+        success:
+          result.success !== false,
+
         source:
           "cron",
+
         result,
+
         timestamp:
           new Date().toISOString(),
       });
@@ -595,6 +590,7 @@ app.post(
 
       res.status(500).json({
         success: false,
+
         error:
           error.message,
       });
@@ -644,8 +640,10 @@ app.use(
   (req, res) => {
     res.status(404).json({
       success: false,
+
       error:
         "Route not found",
+
       path:
         req.originalUrl,
     });
@@ -676,6 +674,7 @@ app.use(
 
     res.status(500).json({
       success: false,
+
       error:
         "Internal server error",
     });
@@ -691,63 +690,82 @@ const server =
     PORT,
     () => {
       console.log("");
+
       console.log(
         "======================================"
       );
+
       console.log(
-        "   ZEESHAN NEWS AI SERVER"
+        "       ZEESHAN NEWS AI SERVER"
       );
+
       console.log(
         "======================================"
       );
+
       console.log(
         `🚀 Server running on port ${PORT}`
       );
+
       console.log(
         `🌐 Environment: ${
           process.env.NODE_ENV ||
           "development"
         }`
       );
+
       console.log(
         "🛡️ Security middleware: enabled"
       );
+
       console.log(
         "🚦 Rate limiting: enabled"
       );
+
       console.log(
         "🔐 Admin authentication: enabled"
       );
+
       console.log(
         "📋 Admin audit logging: enabled"
       );
+
       console.log(
         "🧹 Audit retention: enabled"
       );
+
       console.log(
         "📈 Trending intelligence: enabled"
       );
+
       console.log(
         "🤖 Trending automation: enabled"
       );
+
       console.log(
         "📰 News API: enabled"
       );
+
       console.log(
         "📊 Dashboard API: enabled"
       );
+
       console.log(
-        "🤖 Automation API: enabled"
+        "🤖 News automation: connected"
       );
+
       console.log(
         "📡 Engagement API: enabled"
       );
+
       console.log(
         "🔎 Dynamic sitemap: enabled"
       );
+
       console.log(
         "======================================"
       );
+
       console.log("");
     }
   );
@@ -792,13 +810,17 @@ async function shutdown(
 process.on(
   "SIGTERM",
   () =>
-    shutdown("SIGTERM")
+    shutdown(
+      "SIGTERM"
+    )
 );
 
 process.on(
   "SIGINT",
   () =>
-    shutdown("SIGINT")
+    shutdown(
+      "SIGINT"
+    )
 );
 
 export default app;
