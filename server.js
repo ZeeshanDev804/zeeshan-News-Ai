@@ -38,8 +38,11 @@ import {
 
 const { Pool } = pg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __filename =
+  fileURLToPath(import.meta.url);
+
+const __dirname =
+  path.dirname(__filename);
 
 const app = express();
 
@@ -56,7 +59,9 @@ if (!DATABASE_URL) {
 }
 
 const pool = new Pool({
-  connectionString: DATABASE_URL,
+  connectionString:
+    DATABASE_URL,
+
   ssl: DATABASE_URL
     ? {
         rejectUnauthorized: false,
@@ -65,6 +70,13 @@ const pool = new Pool({
 });
 
 app.locals.db = pool;
+
+
+/*
+  ========================================
+  REQUEST BODY PARSING
+  ========================================
+*/
 
 app.use(
   express.json({
@@ -78,11 +90,28 @@ app.use(
   })
 );
 
+
+/*
+  ========================================
+  STATIC WEBSITE
+  ========================================
+*/
+
 app.use(
   express.static(
-    path.join(__dirname, "public")
+    path.join(
+      __dirname,
+      "public"
+    )
   )
 );
+
+
+/*
+  ========================================
+  HEALTH CHECK
+  ========================================
+*/
 
 app.get(
   "/health",
@@ -110,11 +139,19 @@ app.get(
         success: false,
         status: "unhealthy",
         database: "error",
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
 );
+
+
+/*
+  ========================================
+  SYSTEM STATUS
+  ========================================
+*/
 
 app.get(
   "/api/system/status",
@@ -132,26 +169,66 @@ app.get(
           news: true,
           rss: true,
           ai: true,
-          duplicateChecking: true,
-          copyrightProtection: true,
-          takedown: true,
-          sourceHealth: true,
-          automationHistory: true,
-          sourcePolicy: true,
-          pushNotifications: true,
-          dashboard: true,
-          analytics: true,
-          videoContent: true,
-          socialDistribution: true,
-          contentDistribution: true,
-          autoPilot: true,
-          autoPilotControl: true,
-          ceoApproval: true,
-          ceoApprovalDashboard: true,
-          engagement: true,
-          polls: true,
-          voting: true,
-          quiz: true,
+
+          duplicateChecking:
+            true,
+
+          copyrightProtection:
+            true,
+
+          takedown:
+            true,
+
+          sourceHealth:
+            true,
+
+          automationHistory:
+            true,
+
+          sourcePolicy:
+            true,
+
+          pushNotifications:
+            true,
+
+          dashboard:
+            true,
+
+          analytics:
+            true,
+
+          videoContent:
+            true,
+
+          socialDistribution:
+            true,
+
+          contentDistribution:
+            true,
+
+          autoPilot:
+            true,
+
+          autoPilotControl:
+            true,
+
+          ceoApproval:
+            true,
+
+          ceoApprovalDashboard:
+            true,
+
+          engagement:
+            true,
+
+          polls:
+            true,
+
+          voting:
+            true,
+
+          quiz:
+            true,
         },
 
         scheduler,
@@ -164,16 +241,31 @@ app.get(
 
       res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
 );
 
+
+/*
+  ========================================
+  NEWS
+  ========================================
+*/
+
 app.use(
   "/api/news",
   newsRoutes
 );
+
+
+/*
+  ========================================
+  PUSH NOTIFICATIONS
+  ========================================
+*/
 
 app.use(
   "/api/push",
@@ -185,72 +277,165 @@ app.use(
   pushAdminRoutes
 );
 
+
+/*
+  ========================================
+  DASHBOARD
+  ========================================
+*/
+
 app.use(
   "/api/dashboard",
   dashboardRoutes
 );
+
+
+/*
+  ========================================
+  ANALYTICS
+  ========================================
+*/
 
 app.use(
   "/api/analytics",
   analyticsRoutes
 );
 
+
+/*
+  ========================================
+  COPYRIGHT / TAKEDOWN
+  ========================================
+*/
+
 app.use(
   "/api/takedown",
   takedownRoutes
 );
+
+
+/*
+  ========================================
+  SOURCE HEALTH
+  ========================================
+*/
 
 app.use(
   "/api/source-health",
   sourceHealthRoutes
 );
 
+
+/*
+  ========================================
+  AUTOMATION HISTORY
+  ========================================
+*/
+
 app.use(
   "/api/automation-history",
   automationHistoryRoutes
 );
+
+
+/*
+  ========================================
+  SOURCE POLICY
+  ========================================
+*/
 
 app.use(
   "/api/source-policy",
   sourcePolicyRoutes
 );
 
+
+/*
+  ========================================
+  SOCIAL DISTRIBUTION
+  ========================================
+*/
+
 app.use(
   "/api/social-distribution",
   socialDistributionRoutes
 );
+
+
+/*
+  ========================================
+  CONTENT DISTRIBUTION
+  ========================================
+*/
 
 app.use(
   "/api/content-distribution",
   contentDistributionRoutes
 );
 
+
+/*
+  ========================================
+  AUTO-PILOT
+  ========================================
+*/
+
 app.use(
   "/api/autopilot",
   autoPilotRoutes
 );
+
+
+/*
+  ========================================
+  CEO APPROVAL
+  ========================================
+*/
 
 app.use(
   "/api/ceo-approval",
   ceoApprovalRoutes
 );
 
+
+/*
+  ========================================
+  CEO APPROVAL DASHBOARD
+  ========================================
+*/
+
 app.use(
   "/api/ceo-approval-dashboard",
   ceoApprovalDashboardRoutes
 );
+
+
+/*
+  ========================================
+  POLLS / VOTING / QUIZZES
+  ========================================
+*/
 
 app.use(
   "/api/engagement",
   engagementRoutes
 );
 
+
+/*
+  ========================================
+  MANUAL NEWS AUTOMATION
+  ========================================
+*/
+
 app.post(
   "/api/automation/run",
   async (req, res) => {
     try {
       const result =
-        await runNewsAutomation(pool);
+        await runNewsAutomation(
+          pool
+        );
 
       res.json({
         success: true,
@@ -264,11 +449,19 @@ app.post(
 
       res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
 );
+
+
+/*
+  ========================================
+  AUTOMATION STATUS
+  ========================================
+*/
 
 app.get(
   "/api/automation/status",
@@ -276,6 +469,7 @@ app.get(
     try {
       res.json({
         success: true,
+
         scheduler:
           getSchedulerStatus(),
       });
@@ -287,33 +481,52 @@ app.get(
 
       res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
 );
+
+
+/*
+  ========================================
+  VERCEL CRON
+  ========================================
+*/
 
 app.get(
   "/api/automation/cron",
   async (req, res) => {
     try {
       const verification =
-        verifyCronRequest(req);
+        verifyCronRequest(
+          req
+        );
 
-      if (!verification.valid) {
-        return res.status(401).json({
-          success: false,
-          error:
-            verification.reason,
-        });
+      if (
+        !verification.valid
+      ) {
+        return res
+          .status(401)
+          .json({
+            success: false,
+            error:
+              verification.reason,
+          });
       }
 
       const result =
-        await runNewsAutomation(pool);
+        await runNewsAutomation(
+          pool
+        );
 
       return res.json({
         success: true,
-        trigger: "vercel_cron",
+
+        trigger:
+          "vercel_cron",
+
         ...result,
       });
     } catch (error) {
@@ -322,25 +535,47 @@ app.get(
         error.message
       );
 
-      return res.status(500).json({
-        success: false,
-        error: error.message,
-      });
+      return res
+        .status(500)
+        .json({
+          success: false,
+          error:
+            error.message,
+        });
     }
   }
 );
 
+
+/*
+  ========================================
+  UNKNOWN API ROUTE
+  ========================================
+*/
+
 app.use(
   "/api",
   (req, res) => {
-    res.status(404).json({
-      success: false,
-      error:
-        "API route not found",
-      path: req.originalUrl,
-    });
+    res
+      .status(404)
+      .json({
+        success: false,
+
+        error:
+          "API route not found",
+
+        path:
+          req.originalUrl,
+      });
   }
 );
+
+
+/*
+  ========================================
+  WEBSITE FALLBACK
+  ========================================
+*/
 
 app.get(
   "*",
@@ -355,24 +590,46 @@ app.get(
   }
 );
 
+
+/*
+  ========================================
+  GLOBAL ERROR HANDLER
+  ========================================
+*/
+
 app.use(
-  (error, req, res, next) => {
+  (
+    error,
+    req,
+    res,
+    next
+  ) => {
     console.error(
       "❌ Global server error:",
       error.message
     );
 
-    if (res.headersSent) {
+    if (
+      res.headersSent
+    ) {
       return next(error);
     }
 
     res.status(500).json({
       success: false,
+
       error:
         "Internal server error",
     });
   }
 );
+
+
+/*
+  ========================================
+  START SERVER
+  ========================================
+*/
 
 async function startServer() {
   try {
@@ -393,14 +650,18 @@ async function startServer() {
       }
     );
 
-    startScheduler(pool);
+    startScheduler(
+      pool
+    );
   } catch (error) {
     console.error(
       "❌ Failed to start server:",
       error.message
     );
 
-    process.exit(1);
+    process.exit(
+      1
+    );
   }
 }
 
