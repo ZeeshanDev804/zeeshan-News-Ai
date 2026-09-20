@@ -1,23 +1,21 @@
 import express from "express";
 
-const router = express.Router();
+const router =
+  express.Router();
 
-function escapeXml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
+/* =========================
+   SITE URL
+========================= */
 
-function getBaseUrl(req) {
+function getSiteUrl(req) {
   const configuredUrl =
     process.env.PUBLIC_SITE_URL ||
     process.env.SITE_URL;
 
   if (configuredUrl) {
-    return configuredUrl.replace(/\/+$/, "");
+    return String(
+      configuredUrl
+    ).replace(/\/+$/, "");
   }
 
   const protocol =
@@ -31,6 +29,172 @@ function getBaseUrl(req) {
   return `${protocol}://${host}`;
 }
 
+/* =========================
+   XML ESCAPE
+========================= */
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/* =========================
+   CORE URLS
+========================= */
+
+function getCoreUrls(baseUrl) {
+  return [
+    {
+      loc: `${baseUrl}/`,
+      priority: "1.0",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/latest`,
+      priority: "0.9",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/trending`,
+      priority: "0.9",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/technology`,
+      priority: "0.8",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/business`,
+      priority: "0.8",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/sports`,
+      priority: "0.8",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/entertainment`,
+      priority: "0.8",
+      changefreq: "hourly",
+    },
+
+    {
+      loc: `${baseUrl}/privacy.html`,
+      priority: "0.3",
+      changefreq: "monthly",
+    },
+
+    {
+      loc: `${baseUrl}/terms.html`,
+      priority: "0.3",
+      changefreq: "monthly",
+    },
+
+    {
+      loc:
+        `${baseUrl}/editorial-policy.html`,
+      priority: "0.3",
+      changefreq: "monthly",
+    },
+
+    {
+      loc:
+        `${baseUrl}/copyright.html`,
+      priority: "0.3",
+      changefreq: "monthly",
+    },
+  ];
+}
+
+/* =========================
+   ARTICLE URL
+========================= */
+
+function getArticleUrl(
+  baseUrl,
+  article
+) {
+  const id =
+    article?.id ??
+    article?.article_id;
+
+  if (!id) {
+    return null;
+  }
+
+  return `${baseUrl}/article/${encodeURIComponent(
+    String(id)
+  )}`;
+}
+
+/* =========================
+   BUILD XML
+========================= */
+
+function buildSitemapXml(
+  urls
+) {
+  const items =
+    urls
+      .filter(Boolean)
+      .map((item) => {
+        const lastmod =
+          item.lastmod
+            ? `<lastmod>${escapeXml(
+                item.lastmod
+              )}</lastmod>`
+            : "";
+
+        const changefreq =
+          item.changefreq
+            ? `<changefreq>${escapeXml(
+                item.changefreq
+              )}</changefreq>`
+            : "";
+
+        const priority =
+          item.priority
+            ? `<priority>${escapeXml(
+                item.priority
+              )}</priority>`
+            : "";
+
+        return `
+  <url>
+    <loc>${escapeXml(
+      item.loc
+    )}</loc>
+    ${lastmod}
+    ${changefreq}
+    ${priority}
+  </url>`;
+      })
+      .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+>
+${items}
+</urlset>`;
+}
+
+/* =========================
+   DYNAMIC SITEMAP
+========================= */
+
 router.get(
   "/sitemap.xml",
   async (req, res) => {
@@ -39,164 +203,105 @@ router.get(
         req.app.locals.db;
 
       const baseUrl =
-        getBaseUrl(req);
+        getSiteUrl(req);
 
-      const urls = [
-        {
-          loc: `${baseUrl}/`,
-          changefreq: "hourly",
-          priority: "1.0",
-        },
-        {
-          loc: `${baseUrl}/latest`,
-          changefreq: "hourly",
-          priority: "0.9",
-        },
-        {
-          loc: `${baseUrl}/trending`,
-          changefreq: "hourly",
-          priority: "0.9",
-        },
-        {
-          loc: `${baseUrl}/technology`,
-          changefreq: "daily",
-          priority: "0.8",
-        },
-        {
-          loc: `${baseUrl}/business`,
-          changefreq: "daily",
-          priority: "0.8",
-        },
-        {
-          loc: `${baseUrl}/sports`,
-          changefreq: "daily",
-          priority: "0.8",
-        },
-        {
-          loc: `${baseUrl}/entertainment`,
-          changefreq: "daily",
-          priority: "0.8",
-        },
-        {
-          loc: `${baseUrl}/privacy.html`,
-          changefreq: "monthly",
-          priority: "0.3",
-        },
-        {
-          loc: `${baseUrl}/terms.html`,
-          changefreq: "monthly",
-          priority: "0.3",
-        },
-        {
-          loc: `${baseUrl}/editorial-policy.html`,
-          changefreq: "monthly",
-          priority: "0.3",
-        },
-        {
-          loc: `${baseUrl}/copyright.html`,
-          changefreq: "monthly",
-          priority: "0.3",
-        },
-      ];
+      const urls =
+        getCoreUrls(baseUrl);
 
       /*
-       * Try to add published articles.
-       *
-       * The query is intentionally protected so
-       * the sitemap still works if the production
-       * database uses a different article table.
+       * Database failure should not
+       * destroy the whole sitemap.
        */
 
-      try {
-        const result =
-          await db.query(`
-            SELECT
-              id,
-              updated_at,
-              published_at
-            FROM news_articles
-            WHERE
-              COALESCE(
-                status,
-                'published'
-              ) = 'published'
-            ORDER BY
-              COALESCE(
+      if (db) {
+        try {
+          const result =
+            await db.query(`
+              SELECT
+                id,
                 published_at,
-                updated_at
-              ) DESC
-            LIMIT 5000
-          `);
+                created_at
+              FROM articles
 
-        for (
-          const article
-          of result.rows
+              WHERE
+                COALESCE(
+                  legal_hold,
+                  FALSE
+                ) = FALSE
+
+              AND
+                (
+                  legal_review_required = FALSE
+                  OR legal_review_required IS NULL
+                )
+
+              ORDER BY
+                COALESCE(
+                  published_at,
+                  created_at
+                ) DESC
+
+              LIMIT 5000
+            `);
+
+          for (
+            const article
+            of result.rows || []
+          ) {
+            const articleUrl =
+              getArticleUrl(
+                baseUrl,
+                article
+              );
+
+            if (!articleUrl) {
+              continue;
+            }
+
+            const date =
+              article.published_at ||
+              article.created_at;
+
+            urls.push({
+              loc:
+                articleUrl,
+
+              lastmod:
+                date
+                  ? new Date(
+                      date
+                    ).toISOString()
+                  : null,
+
+              changefreq:
+                "hourly",
+
+              priority:
+                "0.7",
+            });
+          }
+        } catch (
+          databaseError
         ) {
-          const articleDate =
-            article.published_at ||
-            article.updated_at;
-
-          urls.push({
-            loc:
-              `${baseUrl}/article/${encodeURIComponent(
-                article.id
-              )}`,
-
-            lastmod:
-              articleDate
-                ? new Date(
-                    articleDate
-                  ).toISOString()
-                : null,
-
-            changefreq: "daily",
-            priority: "0.7",
-          });
+          console.error(
+            "⚠️ Sitemap database query error:",
+            databaseError.message
+          );
         }
-      } catch (articleError) {
-        console.warn(
-          "⚠️ Sitemap article query skipped:",
-          articleError.message
-        );
       }
 
-      const xmlUrls =
-        urls
-          .map((url) => {
-            const lastmod =
-              url.lastmod
-                ? `
-    <lastmod>${escapeXml(
-      url.lastmod
-    )}</lastmod>`
-                : "";
-
-            return `
-  <url>
-    <loc>${escapeXml(
-      url.loc
-    )}</loc>${lastmod}
-    <changefreq>${escapeXml(
-      url.changefreq
-    )}</changefreq>
-    <priority>${escapeXml(
-      url.priority
-    )}</priority>
-  </url>`;
-          })
-          .join("");
-
       const xml =
-        `<?xml version="1.0" encoding="UTF-8"?>` +
-        `
-<urlset
-  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
->${xmlUrls}
-</urlset>`;
+        buildSitemapXml(
+          urls
+        );
 
       res
         .status(200)
         .type("application/xml")
+        .set(
+          "Cache-Control",
+          "public, max-age=300, s-maxage=300"
+        )
         .send(xml);
     } catch (error) {
       console.error(
@@ -204,13 +309,15 @@ router.get(
         error.message
       );
 
-      res
-        .status(500)
-        .type("application/xml")
-        .send(
-          `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>`
-        );
+      res.status(500).type(
+        "application/xml"
+      ).send(
+        `<?xml version="1.0" encoding="UTF-8"?>
+<urlset
+  xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+>
+</urlset>`
+      );
     }
   }
 );
