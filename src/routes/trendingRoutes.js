@@ -18,7 +18,7 @@ const router =
   express.Router();
 
 /* =========================
-   TRENDING STATUS
+   STATUS
 ========================= */
 
 router.get(
@@ -79,7 +79,7 @@ router.get(
           100
         );
 
-      const articles =
+      const trending =
         await getStoredTrendingArticles(
           db,
           limit
@@ -89,10 +89,9 @@ router.get(
         success: true,
 
         count:
-          articles.length,
+          trending.length,
 
-        trending:
-          articles,
+        trending,
 
         generatedAt:
           new Date().toISOString(),
@@ -145,17 +144,26 @@ router.get(
       const result =
         await db.query(`
           SELECT *
-          FROM news_articles
+          FROM articles
+
           WHERE
             COALESCE(
-              status,
-              'published'
-            ) = 'published'
+              legal_hold,
+              FALSE
+            ) = FALSE
+
+          AND
+            (
+              is_analyzed = TRUE
+              OR is_analyzed IS NULL
+            )
+
           ORDER BY
             COALESCE(
               published_at,
               created_at
             ) DESC
+
           LIMIT 500
         `);
 
@@ -216,17 +224,20 @@ router.get(
       const result =
         await db.query(`
           SELECT *
-          FROM news_articles
+          FROM articles
+
           WHERE
             COALESCE(
-              status,
-              'published'
-            ) = 'published'
+              legal_hold,
+              FALSE
+            ) = FALSE
+
           ORDER BY
             COALESCE(
               published_at,
               created_at
             ) DESC
+
           LIMIT 500
         `);
 
@@ -265,8 +276,54 @@ router.get(
 );
 
 /* =========================
-   CREATE / UPDATE TRENDING
-   SCORE FOR ONE ARTICLE
+   INITIALIZE TRENDING STORE
+========================= */
+
+router.post(
+  "/initialize",
+  async (req, res) => {
+    try {
+      const db =
+        req.app.locals.db;
+
+      if (!db) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Database connection is not available",
+        });
+      }
+
+      await ensureTrendingTable(
+        db
+      );
+
+      res.json({
+        success: true,
+
+        message:
+          "Trending store initialized",
+
+        store:
+          getTrendingStoreStatus(),
+      });
+    } catch (error) {
+      console.error(
+        "❌ Trending initialization error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+        error:
+          "Unable to initialize trending store",
+      });
+    }
+  }
+);
+
+/* =========================
+   SAVE ARTICLE SCORE
 ========================= */
 
 router.post(
@@ -306,7 +363,7 @@ router.post(
         await db.query(
           `
           SELECT *
-          FROM news_articles
+          FROM articles
           WHERE id = $1
           LIMIT 1
           `,
@@ -351,7 +408,7 @@ router.post(
 );
 
 /* =========================
-   GET ONE STORED SCORE
+   GET ARTICLE SCORE
 ========================= */
 
 router.get(
@@ -416,53 +473,6 @@ router.get(
         success: false,
         error:
           "Unable to load trending score",
-      });
-    }
-  }
-);
-
-/* =========================
-   INITIALIZE STORE
-========================= */
-
-router.post(
-  "/initialize",
-  async (req, res) => {
-    try {
-      const db =
-        req.app.locals.db;
-
-      if (!db) {
-        return res.status(503).json({
-          success: false,
-          error:
-            "Database connection is not available",
-        });
-      }
-
-      await ensureTrendingTable(
-        db
-      );
-
-      res.json({
-        success: true,
-
-        message:
-          "Trending store initialized",
-
-        store:
-          getTrendingStoreStatus(),
-      });
-    } catch (error) {
-      console.error(
-        "❌ Trending store initialization error:",
-        error.message
-      );
-
-      res.status(500).json({
-        success: false,
-        error:
-          "Unable to initialize trending store",
       });
     }
   }
