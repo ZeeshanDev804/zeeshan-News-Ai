@@ -36,6 +36,11 @@ import {
 } from "./src/lib/trendingAutomation.js";
 
 import {
+  getProductionMonitorStatus,
+  getProductionHealth,
+} from "./src/lib/productionMonitor.js";
+
+import {
   runNewsAutomation,
   getAutomationStatus,
 } from "./src/lib/newsAutomation.js";
@@ -58,6 +63,7 @@ import engagementRoutes from "./src/routes/engagementRoutes.js";
 import sitemapRoutes from "./src/routes/sitemapRoutes.js";
 import adminAuditRoutes from "./src/routes/adminAuditRoutes.js";
 import trendingRoutes from "./src/routes/trendingRoutes.js";
+import productionMonitorRoutes from "./src/routes/productionMonitorRoutes.js";
 
 import {
   verifyCronRequest,
@@ -264,6 +270,9 @@ app.get(
           adminAuthentication: true,
           adminAudit: true,
           adminAuditRetention: true,
+          productionMonitor: true,
+          sourceFailureTracking: true,
+          retrySystem: true,
         },
 
         automation:
@@ -271,6 +280,9 @@ app.get(
 
         trendingAutomation:
           getTrendingAutomationStatus(),
+
+        productionMonitor:
+          getProductionMonitorStatus(),
 
         security: {
           headers:
@@ -466,6 +478,16 @@ app.use(
 );
 
 /* =========================
+   PRODUCTION MONITOR
+========================= */
+
+app.use(
+  "/api/production-monitor",
+  adminAuthMiddleware,
+  productionMonitorRoutes
+);
+
+/* =========================
    ENGAGEMENT
 ========================= */
 
@@ -537,7 +559,7 @@ app.get(
         success: false,
 
         error:
-          error.message,
+          "Unable to load automation status",
       });
     }
   }
@@ -820,6 +842,14 @@ const server =
 
       console.log(
         "⏰ Vercel Cron GET endpoint: enabled"
+      );
+
+      console.log(
+        "🏥 Production monitor: enabled"
+      );
+
+      console.log(
+        "🔄 Source retry system: enabled"
       );
 
       console.log(
