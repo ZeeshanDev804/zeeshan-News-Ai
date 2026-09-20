@@ -17,9 +17,7 @@
       "zeeshan_news_ai_voter_key";
 
     let voterKey =
-      localStorage.getItem(
-        storageKey
-      );
+      localStorage.getItem(storageKey);
 
     if (!voterKey) {
       voterKey =
@@ -39,10 +37,9 @@
     state.loading = true;
 
     try {
-      const response =
-        await fetch(
-          "/api/engagement?limit=10"
-        );
+      const response = await fetch(
+        "/api/engagement?limit=10"
+      );
 
       if (!response.ok) {
         throw new Error(
@@ -82,7 +79,9 @@
     container.innerHTML = `
       <section class="engagement-section">
         <div class="engagement-card">
-          <p>Loading polls and quizzes...</p>
+          <p>
+            Loading polls and quizzes...
+          </p>
         </div>
       </section>
     `;
@@ -126,7 +125,11 @@
       >
         <div class="engagement-heading">
           <span>COMMUNITY</span>
-          <h2>Polls & Quizzes</h2>
+
+          <h2>
+            Polls & Quizzes
+          </h2>
+
           <p>
             Share your opinion and test
             your knowledge.
@@ -165,6 +168,7 @@
           item.id
         )}"
       >
+
         <div class="engagement-type">
           ${escapeHtml(type)}
         </div>
@@ -176,6 +180,7 @@
         </h3>
 
         <div class="engagement-options">
+
           ${options
             .map(
               (option) => `
@@ -198,6 +203,7 @@
               `
             )
             .join("")}
+
         </div>
 
         <div
@@ -206,6 +212,7 @@
             item.id
           )}"
         ></div>
+
       </article>
     `;
   }
@@ -239,10 +246,12 @@
           )}/vote`,
           {
             method: "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
             },
+
             body: JSON.stringify({
               optionKey,
               voterKey:
@@ -347,7 +356,10 @@
 
       resultBox.innerHTML = `
         <div class="engagement-results">
-          <strong>Current results</strong>
+
+          <strong>
+            Current results
+          </strong>
 
           ${results
             .map((item) => {
@@ -366,19 +378,25 @@
                   : 0;
 
               return `
-                <div class="engagement-result-row">
+                <div
+                  class="engagement-result-row"
+                >
+
                   <div>
                     <span>
                       ${escapeHtml(
                         item.option_key
                       )}
                     </span>
+
                     <span>
                       ${votes} votes
                     </span>
                   </div>
 
-                  <div class="engagement-result-bar">
+                  <div
+                    class="engagement-result-bar"
+                  >
                     <div
                       class="engagement-result-fill"
                       style="width:${percentage}%"
@@ -388,10 +406,12 @@
                   <small>
                     ${percentage}%
                   </small>
+
                 </div>
               `;
             })
             .join("")}
+
         </div>
       `;
     } catch (error) {
@@ -463,12 +483,15 @@
     }
 
     renderLoading();
+
     attachEvents();
+
     fetchEngagements();
   }
 
   window.ZeeshanEngagement = {
     init,
+
     refresh:
       fetchEngagements,
   };
