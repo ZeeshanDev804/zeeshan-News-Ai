@@ -1,58 +1,109 @@
-const CRON_SECRET =
-  process.env.CRON_SECRET;
+/* =========================
+   CRON SECURITY
+========================= */
 
-
-// ========================================
-// CHECK CRON CONFIGURATION
-// ========================================
-
-export function isCronConfigured() {
-  return Boolean(
-    CRON_SECRET &&
-    String(CRON_SECRET).trim()
-  );
-}
-
-
-// ========================================
-// VERIFY CRON REQUEST
-// ========================================
-
-export function verifyCronRequest(
-  req
-) {
-  if (!isCronConfigured()) {
-    return {
-      valid: false,
-      reason:
-        "CRON_SECRET is not configured",
-    };
-  }
-
-
+function getCronSecret(req) {
   const authorization =
-    String(
-      req.headers.authorization ||
-        ""
-    ).trim();
-
-
-  const expected =
-    `Bearer ${CRON_SECRET}`;
-
+    req.headers.authorization;
 
   if (
-    authorization !== expected
+    authorization &&
+    authorization.startsWith("Bearer ")
   ) {
-    return {
-      valid: false,
-      reason:
-        "Invalid cron authorization",
-    };
+    return authorization
+      .slice(7)
+      .trim();
   }
 
+  const headerSecret =
+    req.headers["x-cron-secret"];
+
+  if (headerSecret) {
+    return String(
+      headerSecret
+    ).trim();
+  }
+
+  return "";
+}
+
+/* =========================
+   VERIFY CRON REQUEST
+========================= */
+
+export function verifyCronRequest(req) {
+  const expectedSecret =
+    String(
+      process.env.CRON_SECRET || ""
+    ).trim();
+
+  /*
+   * Cron security must be configured
+   * before production automation runs.
+   */
+
+  if (!expectedSecret) {
+    console.error(
+      "❌ CRON_SECRET is not configured"
+    );
+
+    return false;
+  }
+
+  const providedSecret =
+    getCronSecret(req);
+
+  if (!providedSecret) {
+    console.warn(
+      "⚠️ Cron request rejected: missing secret"
+    );
+
+    return false;
+  }
+
+  if (
+    providedSecret !==
+    expectedSecret
+  ) {
+    console.warn(
+      "⚠️ Cron request rejected: invalid secret"
+    );
+
+    return false;
+  }
+
+  return true;
+}
+
+/* =========================
+   CRON SECURITY STATUS
+========================= */
+
+export function getCronSecurityStatus() {
+  const configured =
+    Boolean(
+      String(
+        process.env.CRON_SECRET || ""
+      ).trim()
+    );
 
   return {
-    valid: true,
+    enabled: true,
+
+    configured,
+
+    environmentVariable:
+      "CRON_SECRET",
+
+    supportedMethods: [
+      "Authorization: Bearer <CRON_SECRET>",
+      "X-Cron-Secret: <CRON_SECRET>",
+    ],
+
+    productionRequired:
+      true,
+
+    secretHardcoded:
+      false,
   };
 }
