@@ -1,26 +1,8 @@
-import "dotenv/config";
-
 import express from "express";
+import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import pg from "pg";
-
-import newsRoutes from "./src/routes/newsRoutes.js";
-import pushRoutes from "./src/routes/pushRoutes.js";
-import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
-import dashboardRoutes from "./src/routes/dashboardRoutes.js";
-import analyticsRoutes from "./src/routes/analyticsRoutes.js";
-import takedownRoutes from "./src/routes/takedownRoutes.js";
-import sourceHealthRoutes from "./src/routes/sourceHealthRoutes.js";
-import automationHistoryRoutes from "./src/routes/automationHistoryRoutes.js";
-import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
-import socialDistributionRoutes from "./src/routes/socialDistributionRoutes.js";
-import contentDistributionRoutes from "./src/routes/contentDistributionRoutes.js";
-import ceoApprovalRoutes from "./src/routes/ceoApprovalRoutes.js";
-import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.js";
-import autoPilotRoutes from "./src/routes/autoPilotRoutes.js";
-import engagementRoutes from "./src/routes/engagementRoutes.js";
-import sitemapRoutes from "./src/routes/sitemapRoutes.js";
 
 import {
   securityMiddleware,
@@ -41,22 +23,33 @@ import {
   getAdminSecurityStatus,
 } from "./src/lib/adminSecurity.js";
 
-import { runNewsAutomation } from "./src/lib/newsAutomation.js";
-
 import {
-  startScheduler,
-  getSchedulerStatus,
-} from "./src/lib/scheduler.js";
+  getAdminAuditStatus,
+} from "./src/lib/adminAuditLog.js";
+
+import newsRoutes from "./src/routes/newsRoutes.js";
+import pushRoutes from "./src/routes/pushRoutes.js";
+import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
+import dashboardRoutes from "./src/routes/dashboardRoutes.js";
+import analyticsRoutes from "./src/routes/analyticsRoutes.js";
+import takedownRoutes from "./src/routes/takedownRoutes.js";
+import sourceHealthRoutes from "./src/routes/sourceHealthRoutes.js";
+import automationHistoryRoutes from "./src/routes/automationHistoryRoutes.js";
+import sourcePolicyRoutes from "./src/routes/sourcePolicyRoutes.js";
+import socialDistributionRoutes from "./src/routes/socialDistributionRoutes.js";
+import contentDistributionRoutes from "./src/routes/contentDistributionRoutes.js";
+import autoPilotRoutes from "./src/routes/autoPilotRoutes.js";
+import ceoApprovalRoutes from "./src/routes/ceoApprovalRoutes.js";
+import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.js";
+import engagementRoutes from "./src/routes/engagementRoutes.js";
+import sitemapRoutes from "./src/routes/sitemapRoutes.js";
+import adminAuditRoutes from "./src/routes/adminAuditRoutes.js";
 
 import {
   verifyCronRequest,
 } from "./src/lib/cronSecurity.js";
 
-import {
-  getSystemStatus,
-} from "./index.js";
-
-const { Pool } = pg;
+dotenv.config();
 
 const __filename =
   fileURLToPath(import.meta.url);
@@ -64,35 +57,38 @@ const __filename =
 const __dirname =
   path.dirname(__filename);
 
-const app = express();
+const app =
+  express();
 
 const PORT =
-  process.env.PORT || 3000;
-
-const DATABASE_URL =
-  process.env.DATABASE_URL;
-
-if (!DATABASE_URL) {
-  console.error(
-    "❌ DATABASE_URL is not configured"
-  );
-}
-
-const pool = new Pool({
-  connectionString:
-    DATABASE_URL,
-
-  ssl: DATABASE_URL
-    ? {
-        rejectUnauthorized: false,
-      }
-    : undefined,
-});
-
-app.locals.db = pool;
+  Number(process.env.PORT) || 3000;
 
 /* =========================
-   SECURITY
+   DATABASE
+========================= */
+
+const {
+  Pool,
+} = pg;
+
+const pool =
+  new Pool({
+    connectionString:
+      process.env.DATABASE_URL,
+
+    ssl:
+      process.env.DATABASE_URL
+        ? {
+            rejectUnauthorized: false,
+          }
+        : false,
+  });
+
+app.locals.db =
+  pool;
+
+/* =========================
+   EXPRESS SECURITY
 ========================= */
 
 app.disable(
@@ -103,6 +99,23 @@ app.set(
   "trust proxy",
   1
 );
+
+app.use(
+  express.json({
+    limit: "2mb",
+  })
+);
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "2mb",
+  })
+);
+
+/* =========================
+   SECURITY MIDDLEWARE
+========================= */
 
 app.use(
   securityMiddleware
@@ -119,23 +132,7 @@ app.use(
 );
 
 /* =========================
-   BODY PARSING
-========================= */
-
-app.use(
-  express.json({
-    limit: "2mb",
-  })
-);
-
-app.use(
-  express.urlencoded({
-    extended: true,
-  })
-);
-
-/* =========================
-   STATIC FILES
+   STATIC WEBSITE
 ========================= */
 
 app.use(
@@ -155,17 +152,16 @@ app.get(
   "/health",
   async (req, res) => {
     try {
-      const result =
-        await pool.query(
-          "SELECT NOW() AS now"
-        );
+      await pool.query(
+        "SELECT 1"
+      );
 
       res.json({
         success: true,
         status: "healthy",
         database: "connected",
         timestamp:
-          result.rows[0].now,
+          new Date().toISOString(),
       });
     } catch (error) {
       console.error(
@@ -173,11 +169,14 @@ app.get(
         error.message
       );
 
-      res.status(500).json({
+      res.status(503).json({
         success: false,
         status: "unhealthy",
         database: "error",
-        error: error.message,
+        error:
+          error.message,
+        timestamp:
+          new Date().toISOString(),
       });
     }
   }
@@ -189,45 +188,38 @@ app.get(
 
 app.get(
   "/api/system/status",
-  async (req, res) => {
+  (req, res) => {
     try {
-      const scheduler =
-        getSchedulerStatus();
-
       res.json({
         success: true,
 
-        ...getSystemStatus(),
+        project:
+          "ZEESHAN NEWS AI",
+
+        status:
+          "operational",
+
+        timestamp:
+          new Date().toISOString(),
 
         features: {
-          news: true,
-          rss: true,
-          ai: true,
-          duplicateChecking: true,
-          copyrightProtection: true,
-          takedown: true,
-          sourceHealth: true,
-          automationHistory: true,
-          sourcePolicy: true,
-          pushNotifications: true,
+          newsEngine: true,
+          newsDatabase: true,
+          duplicateDetection: true,
+          aiEngine: true,
+          newsWebsite: true,
+          automation: true,
+          notifications: true,
           dashboard: true,
-          analytics: true,
-          videoContent: true,
-          socialDistribution: true,
-          contentDistribution: true,
-          autoPilot: true,
-          autoPilotControl: true,
-          ceoApproval: true,
-          ceoApprovalDashboard: true,
+          sourceMonitoring: true,
           engagement: true,
-          polls: true,
-          voting: true,
-          quiz: true,
-          dynamicSitemap: true,
+          seo: true,
+          legalPages: true,
           security: true,
           securityHeaders: true,
           rateLimiting: true,
           adminAuthentication: true,
+          adminAudit: true,
         },
 
         security: {
@@ -242,9 +234,10 @@ app.get(
 
           adminSecurity:
             getAdminSecurityStatus(),
-        },
 
-        scheduler,
+          adminAudit:
+            getAdminAuditStatus(),
+        },
       });
     } catch (error) {
       console.error(
@@ -254,23 +247,15 @@ app.get(
 
       res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          "Unable to load system status",
       });
     }
   }
 );
 
 /* =========================
-   SITEMAP
-========================= */
-
-app.use(
-  "/",
-  sitemapRoutes
-);
-
-/* =========================
-   NEWS
+   PUBLIC NEWS API
 ========================= */
 
 app.use(
@@ -279,7 +264,7 @@ app.use(
 );
 
 /* =========================
-   PUSH NOTIFICATIONS
+   PUBLIC PUSH API
 ========================= */
 
 app.use(
@@ -308,7 +293,7 @@ app.use(
 );
 
 /* =========================
-   ANALYTICS
+   ADMIN ANALYTICS
 ========================= */
 
 app.use(
@@ -318,7 +303,7 @@ app.use(
 );
 
 /* =========================
-   TAKEDOWN
+   TAKEDOWN / COPYRIGHT
 ========================= */
 
 app.use(
@@ -378,7 +363,7 @@ app.use(
 );
 
 /* =========================
-   AUTO-PILOT
+   AUTOPILOT
 ========================= */
 
 app.use(
@@ -397,6 +382,10 @@ app.use(
   ceoApprovalRoutes
 );
 
+/* =========================
+   CEO APPROVAL DASHBOARD
+========================= */
+
 app.use(
   "/api/ceo-approval-dashboard",
   adminAuthMiddleware,
@@ -404,8 +393,17 @@ app.use(
 );
 
 /* =========================
+   ADMIN AUDIT LOG
+========================= */
+
+app.use(
+  "/api/admin-audit",
+  adminAuthMiddleware,
+  adminAuditRoutes
+);
+
+/* =========================
    ENGAGEMENT
-   Polls / Voting / Quizzes
 ========================= */
 
 app.use(
@@ -414,7 +412,7 @@ app.use(
 );
 
 /* =========================
-   MANUAL AUTOMATION
+   AUTOMATION RUN
 ========================= */
 
 app.post(
@@ -422,24 +420,39 @@ app.post(
   adminAuthMiddleware,
   async (req, res) => {
     try {
+      const automation =
+        req.app.locals
+          .automation;
+
+      if (
+        !automation ||
+        typeof automation.run !==
+          "function"
+      ) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Automation service is not available",
+        });
+      }
+
       const result =
-        await runNewsAutomation(
-          pool
-        );
+        await automation.run();
 
       res.json({
         success: true,
-        ...result,
+        result,
       });
     } catch (error) {
       console.error(
-        "❌ Manual automation error:",
+        "❌ Automation run error:",
         error.message
       );
 
       res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
@@ -452,13 +465,39 @@ app.post(
 app.get(
   "/api/automation/status",
   adminAuthMiddleware,
-  (req, res) => {
+  async (req, res) => {
     try {
+      const automation =
+        req.app.locals
+          .automation;
+
+      if (
+        !automation
+      ) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Automation service is not available",
+        });
+      }
+
+      if (
+        typeof automation.status ===
+        "function"
+      ) {
+        const status =
+          await automation.status();
+
+        return res.json({
+          success: true,
+          ...status,
+        });
+      }
+
       res.json({
         success: true,
-
-        scheduler:
-          getSchedulerStatus(),
+        status:
+          "available",
       });
     } catch (error) {
       console.error(
@@ -468,7 +507,8 @@ app.get(
 
       res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
@@ -478,33 +518,47 @@ app.get(
    CRON AUTOMATION
 ========================= */
 
-app.get(
+app.post(
   "/api/automation/cron",
   async (req, res) => {
     try {
-      const verification =
-        verifyCronRequest(
-          req
-        );
+      const valid =
+        verifyCronRequest(req);
 
-      if (!verification.valid) {
+      if (!valid) {
         return res.status(401).json({
           success: false,
           error:
-            verification.reason,
+            "Unauthorized cron request",
+        });
+      }
+
+      const automation =
+        req.app.locals
+          .automation;
+
+      if (
+        !automation ||
+        typeof automation.run !==
+          "function"
+      ) {
+        return res.status(503).json({
+          success: false,
+          error:
+            "Automation service is not available",
         });
       }
 
       const result =
-        await runNewsAutomation(
-          pool
-        );
+        await automation.run();
 
-      return res.json({
+      res.json({
         success: true,
-        trigger:
-          "vercel_cron",
-        ...result,
+        source:
+          "cron",
+        result,
+        timestamp:
+          new Date().toISOString(),
       });
     } catch (error) {
       console.error(
@@ -512,38 +566,39 @@ app.get(
         error.message
       );
 
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
-        error: error.message,
+        error:
+          error.message,
       });
     }
   }
 );
 
 /* =========================
-   UNKNOWN API ROUTE
+   SITEMAP
 ========================= */
 
 app.use(
-  "/api",
-  (req, res) => {
-    res.status(404).json({
-      success: false,
-      error:
-        "API route not found",
-      path:
-        req.originalUrl,
-    });
-  }
+  "/",
+  sitemapRoutes
 );
 
 /* =========================
-   WEBSITE FALLBACK
+   FRONTEND FALLBACK
 ========================= */
 
 app.get(
   "*",
-  (req, res) => {
+  (req, res, next) => {
+    if (
+      req.path.startsWith(
+        "/api/"
+      )
+    ) {
+      return next();
+    }
+
     res.sendFile(
       path.join(
         __dirname,
@@ -551,6 +606,22 @@ app.get(
         "index.html"
       )
     );
+  }
+);
+
+/* =========================
+   404 HANDLER
+========================= */
+
+app.use(
+  (req, res) => {
+    res.status(404).json({
+      success: false,
+      error:
+        "Route not found",
+      path:
+        req.originalUrl,
+    });
   }
 );
 
@@ -567,10 +638,12 @@ app.use(
   ) => {
     console.error(
       "❌ Global server error:",
-      error.message
+      error
     );
 
-    if (res.headersSent) {
+    if (
+      res.headersSent
+    ) {
       return next(error);
     }
 
@@ -583,39 +656,113 @@ app.use(
 );
 
 /* =========================
-   START SERVER
+   SERVER START
 ========================= */
 
-async function startServer() {
-  try {
-    await pool.query(
-      "SELECT 1"
-    );
+const server =
+  app.listen(
+    PORT,
+    () => {
+      console.log("");
+      console.log(
+        "======================================"
+      );
+      console.log(
+        "   ZEESHAN NEWS AI SERVER"
+      );
+      console.log(
+        "======================================"
+      );
+      console.log(
+        `🚀 Server running on port ${PORT}`
+      );
+      console.log(
+        `🌐 Environment: ${
+          process.env.NODE_ENV ||
+          "development"
+        }`
+      );
+      console.log(
+        "🛡️ Security middleware: enabled"
+      );
+      console.log(
+        "🚦 Rate limiting: enabled"
+      );
+      console.log(
+        "🔐 Admin authentication: enabled"
+      );
+      console.log(
+        "📋 Admin audit logging: enabled"
+      );
+      console.log(
+        "📰 News API: enabled"
+      );
+      console.log(
+        "📊 Dashboard API: enabled"
+      );
+      console.log(
+        "🤖 Automation API: enabled"
+      );
+      console.log(
+        "📡 Engagement API: enabled"
+      );
+      console.log(
+        "🔎 Dynamic sitemap: enabled"
+      );
+      console.log(
+        "======================================"
+      );
+      console.log("");
+    }
+  );
 
-    console.log(
-      "✅ PostgreSQL connected"
-    );
+/* =========================
+   GRACEFUL SHUTDOWN
+========================= */
 
-    app.listen(
-      PORT,
-      () => {
+async function shutdown(
+  signal
+) {
+  console.log(
+    `\n⚠️ ${signal} received. Shutting down...`
+  );
+
+  server.close(
+    async () => {
+      try {
+        await pool.end();
+
         console.log(
-          `🚀 ZEESHAN NEWS AI running on port ${PORT}`
+          "✅ Database connection closed"
         );
+
+        console.log(
+          "✅ Server stopped"
+        );
+
+        process.exit(0);
+      } catch (error) {
+        console.error(
+          "❌ Shutdown error:",
+          error.message
+        );
+
+        process.exit(1);
       }
-    );
-
-    startScheduler(
-      pool
-    );
-  } catch (error) {
-    console.error(
-      "❌ Failed to start server:",
-      error.message
-    );
-
-    process.exit(1);
-  }
+    }
+  );
 }
 
-startServer();
+process.on(
+  "SIGTERM",
+  () =>
+    shutdown("SIGTERM")
+);
+
+process.on(
+  "SIGINT",
+  () =>
+    shutdown("SIGINT")
+);
+
+export default app;
