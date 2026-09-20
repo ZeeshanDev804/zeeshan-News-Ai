@@ -545,6 +545,62 @@ app.get(
 
 /* =========================
    CRON AUTOMATION
+   VERCEL CRON USES GET
+========================= */
+
+app.get(
+  "/api/automation/cron",
+  async (req, res) => {
+    try {
+      const valid =
+        verifyCronRequest(
+          req
+        );
+
+      if (!valid) {
+        return res.status(401).json({
+          success: false,
+
+          error:
+            "Unauthorized cron request",
+        });
+      }
+
+      const result =
+        await runNewsAutomation(
+          pool
+        );
+
+      res.json({
+        success:
+          result.success !== false,
+
+        source:
+          "vercel-cron",
+
+        result,
+
+        timestamp:
+          new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error(
+        "❌ Cron automation error:",
+        error.message
+      );
+
+      res.status(500).json({
+        success: false,
+
+        error:
+          error.message,
+      });
+    }
+  }
+);
+
+/* =========================
+   OPTIONAL POST CRON
 ========================= */
 
 app.post(
@@ -575,7 +631,7 @@ app.post(
           result.success !== false,
 
         source:
-          "cron",
+          "cron-post",
 
         result,
 
@@ -584,7 +640,7 @@ app.post(
       });
     } catch (error) {
       console.error(
-        "❌ Cron automation error:",
+        "❌ POST cron automation error:",
         error.message
       );
 
@@ -760,6 +816,10 @@ const server =
 
       console.log(
         "🔎 Dynamic sitemap: enabled"
+      );
+
+      console.log(
+        "⏰ Vercel Cron GET endpoint: enabled"
       );
 
       console.log(
