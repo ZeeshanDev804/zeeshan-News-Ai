@@ -20,6 +20,7 @@ import ceoApprovalRoutes from "./src/routes/ceoApprovalRoutes.js";
 import ceoApprovalDashboardRoutes from "./src/routes/ceoApprovalDashboardRoutes.js";
 import autoPilotRoutes from "./src/routes/autoPilotRoutes.js";
 import engagementRoutes from "./src/routes/engagementRoutes.js";
+import sitemapRoutes from "./src/routes/sitemapRoutes.js";
 
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
@@ -71,12 +72,9 @@ const pool = new Pool({
 
 app.locals.db = pool;
 
-
-/*
-  ========================================
-  REQUEST BODY PARSING
-  ========================================
-*/
+/* =========================
+   BODY PARSING
+========================= */
 
 app.use(
   express.json({
@@ -90,12 +88,9 @@ app.use(
   })
 );
 
-
-/*
-  ========================================
-  STATIC WEBSITE
-  ========================================
-*/
+/* =========================
+   STATIC FILES
+========================= */
 
 app.use(
   express.static(
@@ -106,12 +101,9 @@ app.use(
   )
 );
 
-
-/*
-  ========================================
-  HEALTH CHECK
-  ========================================
-*/
+/* =========================
+   HEALTH
+========================= */
 
 app.get(
   "/health",
@@ -139,19 +131,15 @@ app.get(
         success: false,
         status: "unhealthy",
         database: "error",
-        error:
-          error.message,
+        error: error.message,
       });
     }
   }
 );
 
-
-/*
-  ========================================
-  SYSTEM STATUS
-  ========================================
-*/
+/* =========================
+   SYSTEM STATUS
+========================= */
 
 app.get(
   "/api/system/status",
@@ -169,66 +157,27 @@ app.get(
           news: true,
           rss: true,
           ai: true,
-
-          duplicateChecking:
-            true,
-
-          copyrightProtection:
-            true,
-
-          takedown:
-            true,
-
-          sourceHealth:
-            true,
-
-          automationHistory:
-            true,
-
-          sourcePolicy:
-            true,
-
-          pushNotifications:
-            true,
-
-          dashboard:
-            true,
-
-          analytics:
-            true,
-
-          videoContent:
-            true,
-
-          socialDistribution:
-            true,
-
-          contentDistribution:
-            true,
-
-          autoPilot:
-            true,
-
-          autoPilotControl:
-            true,
-
-          ceoApproval:
-            true,
-
-          ceoApprovalDashboard:
-            true,
-
-          engagement:
-            true,
-
-          polls:
-            true,
-
-          voting:
-            true,
-
-          quiz:
-            true,
+          duplicateChecking: true,
+          copyrightProtection: true,
+          takedown: true,
+          sourceHealth: true,
+          automationHistory: true,
+          sourcePolicy: true,
+          pushNotifications: true,
+          dashboard: true,
+          analytics: true,
+          videoContent: true,
+          socialDistribution: true,
+          contentDistribution: true,
+          autoPilot: true,
+          autoPilotControl: true,
+          ceoApproval: true,
+          ceoApprovalDashboard: true,
+          engagement: true,
+          polls: true,
+          voting: true,
+          quiz: true,
+          dynamicSitemap: true,
         },
 
         scheduler,
@@ -241,31 +190,33 @@ app.get(
 
       res.status(500).json({
         success: false,
-        error:
-          error.message,
+        error: error.message,
       });
     }
   }
 );
 
+/* =========================
+   SITEMAP
+========================= */
 
-/*
-  ========================================
-  NEWS
-  ========================================
-*/
+app.use(
+  "/",
+  sitemapRoutes
+);
+
+/* =========================
+   NEWS
+========================= */
 
 app.use(
   "/api/news",
   newsRoutes
 );
 
-
-/*
-  ========================================
-  PUSH NOTIFICATIONS
-  ========================================
-*/
+/* =========================
+   PUSH NOTIFICATIONS
+========================= */
 
 app.use(
   "/api/push",
@@ -277,156 +228,114 @@ app.use(
   pushAdminRoutes
 );
 
-
-/*
-  ========================================
-  DASHBOARD
-  ========================================
-*/
+/* =========================
+   DASHBOARD
+========================= */
 
 app.use(
   "/api/dashboard",
   dashboardRoutes
 );
 
-
-/*
-  ========================================
-  ANALYTICS
-  ========================================
-*/
+/* =========================
+   ANALYTICS
+========================= */
 
 app.use(
   "/api/analytics",
   analyticsRoutes
 );
 
-
-/*
-  ========================================
-  COPYRIGHT / TAKEDOWN
-  ========================================
-*/
+/* =========================
+   TAKEDOWN
+========================= */
 
 app.use(
   "/api/takedown",
   takedownRoutes
 );
 
-
-/*
-  ========================================
-  SOURCE HEALTH
-  ========================================
-*/
+/* =========================
+   SOURCE HEALTH
+========================= */
 
 app.use(
   "/api/source-health",
   sourceHealthRoutes
 );
 
-
-/*
-  ========================================
-  AUTOMATION HISTORY
-  ========================================
-*/
+/* =========================
+   AUTOMATION HISTORY
+========================= */
 
 app.use(
   "/api/automation-history",
   automationHistoryRoutes
 );
 
-
-/*
-  ========================================
-  SOURCE POLICY
-  ========================================
-*/
+/* =========================
+   SOURCE POLICY
+========================= */
 
 app.use(
   "/api/source-policy",
   sourcePolicyRoutes
 );
 
-
-/*
-  ========================================
-  SOCIAL DISTRIBUTION
-  ========================================
-*/
+/* =========================
+   SOCIAL DISTRIBUTION
+========================= */
 
 app.use(
   "/api/social-distribution",
   socialDistributionRoutes
 );
 
-
-/*
-  ========================================
-  CONTENT DISTRIBUTION
-  ========================================
-*/
+/* =========================
+   CONTENT DISTRIBUTION
+========================= */
 
 app.use(
   "/api/content-distribution",
   contentDistributionRoutes
 );
 
-
-/*
-  ========================================
-  AUTO-PILOT
-  ========================================
-*/
+/* =========================
+   AUTO-PILOT
+========================= */
 
 app.use(
   "/api/autopilot",
   autoPilotRoutes
 );
 
-
-/*
-  ========================================
-  CEO APPROVAL
-  ========================================
-*/
+/* =========================
+   CEO APPROVAL
+========================= */
 
 app.use(
   "/api/ceo-approval",
   ceoApprovalRoutes
 );
 
-
-/*
-  ========================================
-  CEO APPROVAL DASHBOARD
-  ========================================
-*/
-
 app.use(
   "/api/ceo-approval-dashboard",
   ceoApprovalDashboardRoutes
 );
 
-
-/*
-  ========================================
-  POLLS / VOTING / QUIZZES
-  ========================================
-*/
+/* =========================
+   ENGAGEMENT
+   Polls / Voting / Quizzes
+========================= */
 
 app.use(
   "/api/engagement",
   engagementRoutes
 );
 
-
-/*
-  ========================================
-  MANUAL NEWS AUTOMATION
-  ========================================
-*/
+/* =========================
+   MANUAL AUTOMATION
+========================= */
 
 app.post(
   "/api/automation/run",
@@ -449,19 +358,15 @@ app.post(
 
       res.status(500).json({
         success: false,
-        error:
-          error.message,
+        error: error.message,
       });
     }
   }
 );
 
-
-/*
-  ========================================
-  AUTOMATION STATUS
-  ========================================
-*/
+/* =========================
+   AUTOMATION STATUS
+========================= */
 
 app.get(
   "/api/automation/status",
@@ -469,7 +374,6 @@ app.get(
     try {
       res.json({
         success: true,
-
         scheduler:
           getSchedulerStatus(),
       });
@@ -481,19 +385,15 @@ app.get(
 
       res.status(500).json({
         success: false,
-        error:
-          error.message,
+        error: error.message,
       });
     }
   }
 );
 
-
-/*
-  ========================================
-  VERCEL CRON
-  ========================================
-*/
+/* =========================
+   CRON AUTOMATION
+========================= */
 
 app.get(
   "/api/automation/cron",
@@ -504,16 +404,12 @@ app.get(
           req
         );
 
-      if (
-        !verification.valid
-      ) {
-        return res
-          .status(401)
-          .json({
-            success: false,
-            error:
-              verification.reason,
-          });
+      if (!verification.valid) {
+        return res.status(401).json({
+          success: false,
+          error:
+            verification.reason,
+        });
       }
 
       const result =
@@ -523,10 +419,7 @@ app.get(
 
       return res.json({
         success: true,
-
-        trigger:
-          "vercel_cron",
-
+        trigger: "vercel_cron",
         ...result,
       });
     } catch (error) {
@@ -535,47 +428,34 @@ app.get(
         error.message
       );
 
-      return res
-        .status(500)
-        .json({
-          success: false,
-          error:
-            error.message,
-        });
+      return res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   }
 );
 
-
-/*
-  ========================================
-  UNKNOWN API ROUTE
-  ========================================
-*/
+/* =========================
+   UNKNOWN API ROUTE
+========================= */
 
 app.use(
   "/api",
   (req, res) => {
-    res
-      .status(404)
-      .json({
-        success: false,
-
-        error:
-          "API route not found",
-
-        path:
-          req.originalUrl,
-      });
+    res.status(404).json({
+      success: false,
+      error:
+        "API route not found",
+      path:
+        req.originalUrl,
+    });
   }
 );
 
-
-/*
-  ========================================
-  WEBSITE FALLBACK
-  ========================================
-*/
+/* =========================
+   WEBSITE FALLBACK
+========================= */
 
 app.get(
   "*",
@@ -590,12 +470,9 @@ app.get(
   }
 );
 
-
-/*
-  ========================================
-  GLOBAL ERROR HANDLER
-  ========================================
-*/
+/* =========================
+   GLOBAL ERROR HANDLER
+========================= */
 
 app.use(
   (
@@ -609,27 +486,21 @@ app.use(
       error.message
     );
 
-    if (
-      res.headersSent
-    ) {
+    if (res.headersSent) {
       return next(error);
     }
 
     res.status(500).json({
       success: false,
-
       error:
         "Internal server error",
     });
   }
 );
 
-
-/*
-  ========================================
-  START SERVER
-  ========================================
-*/
+/* =========================
+   START SERVER
+========================= */
 
 async function startServer() {
   try {
@@ -659,9 +530,7 @@ async function startServer() {
       error.message
     );
 
-    process.exit(
-      1
-    );
+    process.exit(1);
   }
 }
 
