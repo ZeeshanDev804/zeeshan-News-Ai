@@ -31,6 +31,10 @@ import {
   getAdminAuditRetentionStatus,
 } from "./src/lib/adminAuditRetention.js";
 
+import {
+  getTrendingAutomationStatus,
+} from "./src/lib/trendingAutomation.js";
+
 import newsRoutes from "./src/routes/newsRoutes.js";
 import pushRoutes from "./src/routes/pushRoutes.js";
 import pushAdminRoutes from "./src/routes/pushAdminRoutes.js";
@@ -219,6 +223,7 @@ app.get(
           sourceMonitoring: true,
           engagement: true,
           trendingIntelligence: true,
+          trendingAutomation: true,
           seo: true,
           legalPages: true,
           security: true,
@@ -228,6 +233,9 @@ app.get(
           adminAudit: true,
           adminAuditRetention: true,
         },
+
+        trendingAutomation:
+          getTrendingAutomationStatus(),
 
         security: {
           headers:
@@ -718,6 +726,9 @@ const server =
       );
       console.log(
         "📈 Trending intelligence: enabled"
+      );
+      console.log(
+        "🤖 Trending automation: enabled"
       );
       console.log(
         "📰 News API: enabled"
