@@ -22,6 +22,16 @@ import autoPilotRoutes from "./src/routes/autoPilotRoutes.js";
 import engagementRoutes from "./src/routes/engagementRoutes.js";
 import sitemapRoutes from "./src/routes/sitemapRoutes.js";
 
+import {
+  securityMiddleware,
+  securityStatus,
+} from "./src/middleware/securityMiddleware.js";
+
+import {
+  rateLimitMiddleware,
+  getRateLimitStatus,
+} from "./src/middleware/rateLimitMiddleware.js";
+
 import { runNewsAutomation } from "./src/lib/newsAutomation.js";
 
 import {
@@ -71,6 +81,33 @@ const pool = new Pool({
 });
 
 app.locals.db = pool;
+
+/* =========================
+   SECURITY
+========================= */
+
+app.disable(
+  "x-powered-by"
+);
+
+app.set(
+  "trust proxy",
+  1
+);
+
+app.use(
+  securityMiddleware
+);
+
+app.use(
+  rateLimitMiddleware({
+    windowMs:
+      60 * 1000,
+
+    maxRequests:
+      120,
+  })
+);
 
 /* =========================
    BODY PARSING
@@ -178,6 +215,17 @@ app.get(
           voting: true,
           quiz: true,
           dynamicSitemap: true,
+          security: true,
+          securityHeaders: true,
+          rateLimiting: true,
+        },
+
+        security: {
+          headers:
+            securityStatus(),
+
+          rateLimit:
+            getRateLimitStatus(),
         },
 
         scheduler,
@@ -374,6 +422,7 @@ app.get(
     try {
       res.json({
         success: true,
+
         scheduler:
           getSchedulerStatus(),
       });
@@ -419,7 +468,8 @@ app.get(
 
       return res.json({
         success: true,
-        trigger: "vercel_cron",
+        trigger:
+          "vercel_cron",
         ...result,
       });
     } catch (error) {
