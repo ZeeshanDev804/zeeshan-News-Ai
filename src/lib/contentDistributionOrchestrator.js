@@ -72,13 +72,12 @@ function buildQueueItem({
 }) {
   return {
     articleId,
-
     platform,
-
     region,
 
     status:
-      autopilot.status,
+      autopilot?.status ||
+      "held",
 
     title:
       contentPackage?.headline ||
@@ -115,20 +114,21 @@ function buildQueueItem({
       "",
 
     hashtags:
-      contentPackage?.hashtags ||
-      [],
+      Array.isArray(contentPackage?.hashtags)
+        ? contentPackage.hashtags
+        : [],
 
     safetyResult:
-      autopilot.safety ||
+      autopilot?.safety ||
       null,
 
     publishingResult:
-      autopilot.schedule ||
+      autopilot?.schedule ||
       null,
 
     scheduledAt:
-      autopilot.schedule?.nextPublishAt ||
-      autopilot.schedule?.scheduledAt ||
+      autopilot?.schedule?.nextPublishAt ||
+      autopilot?.schedule?.scheduledAt ||
       null,
 
     providerName: null,
@@ -138,6 +138,87 @@ function buildQueueItem({
     publishedAt: null,
 
     errorMessage: null,
+  };
+}
+
+function buildArticle({
+  articleId,
+  title,
+  summary,
+  category,
+  source,
+  sourceUrl,
+  content,
+}) {
+  return {
+    id: articleId,
+    articleId,
+
+    title:
+      String(title || "").trim(),
+
+    headline:
+      String(title || "").trim(),
+
+    summary:
+      String(summary || "").trim(),
+
+    category:
+      String(category || "").trim(),
+
+    source:
+      String(source || "").trim(),
+
+    sourceUrl:
+      String(sourceUrl || "").trim(),
+
+    content:
+      String(content || "").trim(),
+  };
+}
+
+function buildAutopilotInput({
+  article,
+  platform,
+  region,
+  mode,
+  timezone,
+  contentPackage,
+}) {
+  return {
+    title:
+      contentPackage?.headline ||
+      article.title,
+
+    content:
+      contentPackage?.content ||
+      article.content,
+
+    summary:
+      article.summary,
+
+    category:
+      article.category,
+
+    source:
+      article.source,
+
+    sourceUrl:
+      article.sourceUrl,
+
+    platform,
+
+    region,
+
+    mode,
+
+    timezone,
+
+    hasAttribution: true,
+
+    exactSourceReproduction: false,
+
+    duplicateMatch: false,
   };
 }
 
@@ -174,6 +255,17 @@ export async function runContentDistributionOrchestrator({
   const selectedRegions =
     normalizeRegions(regions);
 
+  const article =
+    buildArticle({
+      articleId,
+      title,
+      summary,
+      category,
+      source,
+      sourceUrl,
+      content,
+    });
+
   const queueItems = [];
 
   const approvalItems = [];
@@ -182,31 +274,70 @@ export async function runContentDistributionOrchestrator({
 
   for (const platform of selectedPlatforms) {
     for (const region of selectedRegions) {
-      let contentPackage;
+      let contentPackage = null;
 
       try {
+        /*
+         * IMPORTANT:
+         * socialDistributionEngine expects:
+         *
+         * createSocialDistributionPackage(article, options)
+         *
+         * The previous version incorrectly sent one flat object.
+         */
         contentPackage =
-          await createSocialDistributionPackage({
-            articleId,
-            title,
-            summary,
-            category,
-            source,
-            sourceUrl,
-            content,
-            platform,
-            region,
-            timezone,
-          });
+          await createSocialDistributionPackage(
+            article,
+            {
+              platforms: [platform],
+              region,
+              previousContent: null,
+            }
+          );
+
+        /*
+         * The social engine returns a package containing
+         * platform-specific packages.
+         */
+        if (
+          Array.isArray(
+            contentPackage?.packages
+          )
+        ) {
+          contentPackage =
+            contentPackage.packages.find(
+              (item) =>
+                String(
+                  item?.platform || ""
+                ).toLowerCase() ===
+                platform
+            ) ||
+            contentPackage.packages[0] ||
+            null;
+        }
+
+        if (
+          !contentPackage ||
+          typeof contentPackage !== "object"
+        ) {
+          throw new Error(
+            "Social content package was not generated."
+          );
+        }
       } catch (error) {
+        const errorMessage =
+          error?.message ||
+          "Social content generation failed.";
+
         evaluations.push({
           platform,
           region,
           status: "held",
           decision: "hold",
           riskLevel: "high",
-          error:
-            error.message,
+          emergencyStop: false,
+          reason: errorMessage,
+          error: errorMessage,
         });
 
         queueItems.push({
@@ -214,7 +345,10 @@ export async function runContentDistributionOrchestrator({
           platform,
           region,
           status: "held",
-          title,
+
+          title:
+            article.title,
+
           caption: "",
           description: "",
           hook: "",
@@ -223,122 +357,144 @@ export async function runContentDistributionOrchestrator({
           thumbnailText: "",
           pinnedComment: "",
           hashtags: [],
+
           safetyResult: {
             riskLevel: "high",
             decision: "hold",
             reasons: [
-              error.message,
+              errorMessage,
             ],
           },
+
           publishingResult: null,
           scheduledAt: null,
+
           providerName: null,
           providerPostId: null,
           publishedAt: null,
-          errorMessage:
-            error.message,
+
+          errorMessage,
         });
 
         continue;
       }
 
-      const autopilot =
-        await evaluateAutoPilot({
-          db,
+      let autopilot;
 
-          title:
-            contentPackage?.headline ||
-            title,
+      try {
+        const autopilotInput =
+          buildAutopilotInput({
+            article,
+            platform,
+            region,
+            mode,
+            timezone,
+            contentPackage,
+          });
 
-          content:
-            contentPackage?.content ||
-            content,
+        autopilot =
+          await evaluateAutoPilot({
+            db,
+            ...autopilotInput,
+          });
+      } catch (error) {
+        const errorMessage =
+          error?.message ||
+          "Auto-Pilot evaluation failed.";
 
-          summary,
+        autopilot = {
+          status: "held",
+          decision: "hold",
+          riskLevel: "high",
+          emergencyStop: false,
+          reason: errorMessage,
 
-          category,
+          safety: {
+            riskLevel: "high",
+            decision: "hold",
+            reasons: [
+              errorMessage,
+            ],
+          },
 
-          source,
-
-          sourceUrl,
-
-          platform,
-
-          region,
-
-          mode,
-
-          timezone,
-
-          hasAttribution:
-            true,
-
-          exactSourceReproduction:
-            false,
-
-          duplicateMatch:
-            false,
-        });
+          schedule: null,
+        };
+      }
 
       let finalAutopilot =
         autopilot;
 
+      /*
+       * Only LOW-RISK auto_publish items
+       * may enter the automatic scheduling step.
+       *
+       * Medium risk remains CEO approval.
+       * High risk remains held.
+       */
       if (
-        autopilot.decision ===
+        autopilot?.decision ===
         "auto_publish"
       ) {
-        finalAutopilot =
-          await createAutoPilotSchedule({
-            db,
+        try {
+          const scheduleInput =
+            buildAutopilotInput({
+              article,
+              platform,
+              region,
+              mode,
+              timezone,
+              contentPackage,
+            });
 
-            title:
-              contentPackage?.headline ||
-              title,
+          finalAutopilot =
+            await createAutoPilotSchedule({
+              db,
+              ...scheduleInput,
+            });
+        } catch (error) {
+          finalAutopilot = {
+            ...autopilot,
 
-            content:
-              contentPackage?.content ||
-              content,
+            status: "held",
 
-            summary,
+            decision: "hold",
 
-            category,
+            riskLevel:
+              autopilot?.riskLevel ||
+              "high",
 
-            source,
+            reason:
+              error?.message ||
+              "Auto-Pilot scheduling failed.",
 
-            sourceUrl,
-
-            platform,
-
-            region,
-
-            mode,
-
-            timezone,
-
-            hasAttribution:
-              true,
-
-            exactSourceReproduction:
-              false,
-
-            duplicateMatch:
-              false,
-          });
+            schedule: null,
+          };
+        }
       }
 
       evaluations.push({
         platform,
         region,
+
         status:
-          finalAutopilot.status,
+          finalAutopilot?.status ||
+          "held",
+
         decision:
-          finalAutopilot.decision,
+          finalAutopilot?.decision ||
+          "hold",
+
         riskLevel:
-          finalAutopilot.riskLevel,
+          finalAutopilot?.riskLevel ||
+          "high",
+
         emergencyStop:
-          finalAutopilot.emergencyStop,
+          finalAutopilot?.emergencyStop ===
+          true,
+
         reason:
-          finalAutopilot.reason,
+          finalAutopilot?.reason ||
+          "",
       });
 
       const queueItem =
@@ -355,8 +511,12 @@ export async function runContentDistributionOrchestrator({
         queueItem
       );
 
+      /*
+       * Medium-risk / assisted items go
+       * to the CEO approval queue.
+       */
       if (
-        finalAutopilot.status ===
+        finalAutopilot?.status ===
         "ceo_approval"
       ) {
         approvalItems.push({
@@ -368,23 +528,27 @@ export async function runContentDistributionOrchestrator({
 
           title:
             contentPackage?.headline ||
-            title,
+            article.title,
 
           content:
             contentPackage?.content ||
-            content,
+            article.content,
 
           decision:
-            finalAutopilot.decision,
+            finalAutopilot?.decision ||
+            "ceo_approval",
 
           riskLevel:
-            finalAutopilot.riskLevel,
+            finalAutopilot?.riskLevel ||
+            "medium",
 
           safetyResult:
-            finalAutopilot.safety,
+            finalAutopilot?.safety ||
+            null,
 
           scheduleData:
-            finalAutopilot.schedule,
+            finalAutopilot?.schedule ||
+            null,
         });
       }
     }
@@ -456,19 +620,29 @@ export async function runContentDistributionOrchestrator({
   let nextStep =
     "No publishing action required.";
 
-  if (emergencyStopped > 0) {
+  if (
+    emergencyStopped > 0
+  ) {
     nextStep =
       "Emergency STOP is active. Publishing remains held until the CEO releases it.";
-  } else if (blocked > 0) {
+  } else if (
+    blocked > 0
+  ) {
     nextStep =
       "Blocked content requires review before any publishing action.";
-  } else if (held > 0) {
+  } else if (
+    held > 0
+  ) {
     nextStep =
       "Held content requires safety/legal review.";
-  } else if (approvals > 0) {
+  } else if (
+    approvals > 0
+  ) {
     nextStep =
       "CEO approval is required for medium-risk or assisted-mode items.";
-  } else if (scheduled > 0) {
+  } else if (
+    scheduled > 0
+  ) {
     nextStep =
       "Low-risk Auto-Pilot items are scheduled for publishing.";
   }
@@ -550,5 +724,16 @@ export function getOrchestratorStatus() {
 
     providerStatus:
       "not_connected",
+
+    integrationFixed: true,
+
+    mediumRiskRequiresCEOApproval:
+      true,
+
+    highRiskIsHeld:
+      true,
+
+    lowRiskCanBeScheduled:
+      true,
   };
 }
