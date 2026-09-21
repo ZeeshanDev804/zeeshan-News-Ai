@@ -451,4 +451,876 @@ export async function ensureContentDistributionTable(db) {
 
   await db.query(`
     CREATE INDEX IF NOT EXISTS
-      content
+      content_distribution_article_idx
+    ON content_distribution(article_id)
+  `);
+
+  return {
+    success: true,
+    table: "content_distribution",
+  };
+}
+
+/* =========================
+   GET ARTICLE
+========================= */
+
+async function getArticle(db, articleId) {
+  if (!validArticleId(articleId)) {
+    throw new Error(
+      "Valid article ID is required"
+    );
+  }
+
+  const result = await db.query(
+    `
+    SELECT
+      id,
+      title,
+      description,
+      content,
+      source,
+      link,
+      ai_headline,
+      ai_summary,
+      ai_category,
+      seo_title,
+      key_points,
+      publication_status,
+      publication_risk,
+      publication_action,
+      publication_score,
+      legal_hold,
+      legal_review_required,
+      copyright_status,
+      copyright_risk,
+      takedown_status
+    FROM articles
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [Number(articleId)]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error(
+      `Article not found: ${articleId}`
+    );
+  }
+
+  return result.rows[0];
+}
+
+/* =========================
+   SAFETY CHECK
+========================= */
+
+function evaluateDistributionSafety(article) {
+  const legalHold =
+    article.legal_hold === true ||
+    String(article.legal_hold).toLowerCase() ===
+      "true";
+
+  const legalReview =
+    article.legal_review_required === true ||
+    String(article.legal_review_required).toLowerCase() ===
+      "true";
+
+  if (legalHold) {
+    return {
+      allowed: false,
+      status: DISTRIBUTION_STATUS.BLOCKED,
+      reason: "Legal hold is active",
+    };
+  }
+
+  if (legalReview) {
+    return {
+      allowed: false,
+      status: DISTRIBUTION_STATUS.BLOCKED,
+      reason: "Legal review is required",
+    };
+  }
+
+  const copyrightRisk = safeText(
+    article.copyright_risk,
+    100
+  ).toLowerCase();
+
+  const copyrightStatus = safeText(
+    article.copyright_status,
+    100
+  ).toLowerCase();
+
+  if (
+    copyrightRisk === "high" ||
+    copyrightRisk === "critical" ||
+    [
+      "blocked",
+      "takedown",
+      "high_risk",
+      "held",
+    ].includes(copyrightStatus)
+  ) {
+    return {
+      allowed: false,
+      status: DISTRIBUTION_STATUS.BLOCKED,
+      reason:
+        "Copyright protection blocked distribution",
+    };
+  }
+
+  const takedownStatus = safeText(
+    article.takedown_status,
+    100
+  ).toLowerCase();
+
+  if (
+    takedownStatus &&
+    ![
+      "none",
+      "cleared",
+      "rejected",
+      "resolved",
+    ].includes(takedownStatus)
+  ) {
+    return {
+      allowed: false,
+      status: DISTRIBUTION_STATUS.BLOCKED,
+      reason: "Active takedown issue",
+    };
+  }
+
+  const publicationStatus = safeText(
+    article.publication_status,
+    100
+  ).toLowerCase();
+
+  if (
+    [
+      "awaiting_ceo_approval",
+      "held",
+      "pending",
+    ].includes(publicationStatus)
+  ) {
+    return {
+      allowed: false,
+      status: DISTRIBUTION_STATUS.HOLD,
+      reason:
+        "Article requires publication approval",
+    };
+  }
+
+  if (publicationStatus !== "approved") {
+    return {
+      allowed: false,
+      status: DISTRIBUTION_STATUS.HOLD,
+      reason:
+        "Article has not passed publication gate",
+    };
+  }
+
+  return {
+    allowed: true,
+    status: DISTRIBUTION_STATUS.READY,
+    reason:
+      "Article passed distribution safety checks",
+  };
+}
+
+/* =========================
+   CREATE DISTRIBUTION JOBS
+========================= */
+
+export async function createDistributionJobs(
+  db,
+  articleId,
+  platforms = DEFAULT_PLATFORMS,
+  region = "Worldwide"
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const article = await getArticle(
+    db,
+    articleId
+  );
+
+  const safety =
+    evaluateDistributionSafety(article);
+
+  const requestedPlatforms =
+    Array.isArray(platforms)
+      ? platforms
+      : DEFAULT_PLATFORMS;
+
+  const normalizedPlatforms = [
+    ...new Set(
+      requestedPlatforms
+        .map(safePlatform)
+        .filter(Boolean)
+    ),
+  ];
+
+  if (
+    normalizedPlatforms.length === 0
+  ) {
+    throw new Error(
+      "At least one valid distribution platform is required"
+    );
+  }
+
+  const safeRegion =
+    normalizeRegion(region);
+
+  const jobs = [];
+
+  for (
+    const platform of normalizedPlatforms
+  ) {
+    const result = await db.query(
+      `
+      INSERT INTO content_distribution (
+        article_id,
+        platform,
+        region,
+        status,
+        risk_level,
+        title,
+        description,
+        safety_result,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        $7,
+        $8::jsonb,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (
+        article_id,
+        platform,
+        region
+      )
+      DO UPDATE SET
+        status = EXCLUDED.status,
+        risk_level = EXCLUDED.risk_level,
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        safety_result = EXCLUDED.safety_result,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+      `,
+      [
+        Number(articleId),
+        platform,
+        safeRegion,
+        safety.status,
+        normalizeRiskLevel(
+          article.publication_risk
+        ),
+        safeText(
+          article.ai_headline ||
+            article.title,
+          1000
+        ),
+        safeText(
+          article.ai_summary ||
+            article.description ||
+            "",
+          10000
+        ),
+        JSON.stringify(safety),
+      ]
+    );
+
+    jobs.push(result.rows[0]);
+  }
+
+  return {
+    success: true,
+    articleId: Number(articleId),
+    region: safeRegion,
+    safety,
+    jobs,
+  };
+}
+
+/* =========================
+   SAVE DISTRIBUTION BATCH
+========================= */
+
+export async function saveDistributionBatch(
+  db,
+  items = []
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  if (!Array.isArray(items)) {
+    throw new Error(
+      "Distribution items must be an array"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const saved = [];
+  const skipped = [];
+
+  for (const rawItem of items) {
+    try {
+      const item =
+        normalizeQueueItem(rawItem);
+
+      if (!item.articleId) {
+        skipped.push({
+          reason:
+            "Valid articleId is required",
+          item: rawItem,
+        });
+
+        continue;
+      }
+
+      if (!item.platform) {
+        skipped.push({
+          reason:
+            "Valid distribution platform is required",
+          item: rawItem,
+        });
+
+        continue;
+      }
+
+      const result = await db.query(
+        `
+        INSERT INTO content_distribution (
+          article_id,
+          platform,
+          region,
+          status,
+          risk_level,
+          title,
+          caption,
+          description,
+          hook,
+          closing,
+          call_to_action,
+          thumbnail_text,
+          pinned_comment,
+          hashtags,
+          safety_result,
+          publishing_result,
+          scheduled_at,
+          provider_name,
+          external_id,
+          external_url,
+          published_at,
+          error,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13,
+          $14::jsonb,
+          $15::jsonb,
+          $16::jsonb,
+          $17,
+          $18,
+          $19,
+          $20,
+          $21,
+          $22,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (
+          article_id,
+          platform,
+          region
+        )
+        DO UPDATE SET
+          status = EXCLUDED.status,
+          risk_level = EXCLUDED.risk_level,
+          title = EXCLUDED.title,
+          caption = EXCLUDED.caption,
+          description = EXCLUDED.description,
+          hook = EXCLUDED.hook,
+          closing = EXCLUDED.closing,
+          call_to_action = EXCLUDED.call_to_action,
+          thumbnail_text = EXCLUDED.thumbnail_text,
+          pinned_comment = EXCLUDED.pinned_comment,
+          hashtags = EXCLUDED.hashtags,
+          safety_result = EXCLUDED.safety_result,
+          publishing_result = EXCLUDED.publishing_result,
+          scheduled_at = EXCLUDED.scheduled_at,
+          provider_name = EXCLUDED.provider_name,
+          external_id = EXCLUDED.external_id,
+          external_url = EXCLUDED.external_url,
+          published_at = EXCLUDED.published_at,
+          error = EXCLUDED.error,
+          updated_at = CURRENT_TIMESTAMP
+        RETURNING *
+        `,
+        [
+          item.articleId,
+          item.platform,
+          item.region,
+          item.status,
+          item.riskLevel,
+          item.title,
+          item.caption,
+          item.description,
+          item.hook,
+          item.closing,
+          item.callToAction,
+          item.thumbnailText,
+          item.pinnedComment,
+          JSON.stringify(item.hashtags),
+          JSON.stringify(
+            item.safetyResult || {}
+          ),
+          JSON.stringify(
+            item.publishingResult || {}
+          ),
+          item.scheduledAt,
+          item.providerName,
+          item.providerPostId,
+          item.externalUrl,
+          item.publishedAt,
+          item.errorMessage,
+        ]
+      );
+
+      saved.push(result.rows[0]);
+    } catch (error) {
+      skipped.push({
+        reason:
+          error?.message ||
+          "Distribution save failed",
+        item: rawItem,
+      });
+    }
+  }
+
+  return {
+    success: true,
+    savedCount: saved.length,
+    skippedCount: skipped.length,
+    saved,
+    skipped,
+  };
+}
+
+/* =========================
+   GET DISTRIBUTION
+========================= */
+
+export async function getDistribution(
+  db,
+  {
+    articleId = null,
+    platform = null,
+    region = null,
+    status = null,
+    limit = 100,
+  } = {}
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const safeLimit = Math.min(
+    Math.max(Number(limit) || 100, 1),
+    500
+  );
+
+  const conditions = [];
+  const values = [];
+
+  if (validArticleId(articleId)) {
+    values.push(Number(articleId));
+
+    conditions.push(
+      `article_id = $${values.length}`
+    );
+  }
+
+  const normalizedPlatform =
+    safePlatform(platform);
+
+  if (normalizedPlatform) {
+    values.push(normalizedPlatform);
+
+    conditions.push(
+      `platform = $${values.length}`
+    );
+  }
+
+  if (region) {
+    values.push(
+      normalizeRegion(region)
+    );
+
+    conditions.push(
+      `region = $${values.length}`
+    );
+  }
+
+  if (status) {
+    values.push(
+      normalizeStatus(status)
+    );
+
+    conditions.push(
+      `status = $${values.length}`
+    );
+  }
+
+  const where =
+    conditions.length > 0
+      ? `WHERE ${conditions.join(" AND ")}`
+      : "";
+
+  values.push(safeLimit);
+
+  const result = await db.query(
+    `
+    SELECT *
+    FROM content_distribution
+
+    ${where}
+
+    ORDER BY
+      COALESCE(
+        scheduled_at,
+        created_at
+      ) ASC,
+      id DESC
+
+    LIMIT $${values.length}
+    `,
+    values
+  );
+
+  return {
+    success: true,
+    count: result.rows.length,
+    items: result.rows,
+  };
+}
+
+/* =========================
+   GET SINGLE DISTRIBUTION
+========================= */
+
+export async function getDistributionById(
+  db,
+  id
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  const distributionId = Number(id);
+
+  if (!validDistributionId(distributionId)) {
+    throw new Error(
+      "Valid distribution ID is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const result = await db.query(
+    `
+    SELECT *
+    FROM content_distribution
+    WHERE id = $1
+    LIMIT 1
+    `,
+    [distributionId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error(
+      `Distribution job not found: ${distributionId}`
+    );
+  }
+
+  return {
+    success: true,
+    item: result.rows[0],
+  };
+}
+
+/* =========================
+   UPDATE DISTRIBUTION STATUS
+========================= */
+
+export async function updateDistributionStatus(
+  db,
+  id,
+  status,
+  details = {}
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  const distributionId = Number(id);
+
+  if (!validDistributionId(distributionId)) {
+    throw new Error(
+      "Valid distribution ID is required"
+    );
+  }
+
+  const normalizedStatus =
+    normalizeStatus(status);
+
+  await ensureContentDistributionTable(db);
+
+  const errorMessage =
+    safeText(
+      details.errorMessage ||
+        details.error ||
+        "",
+      5000
+    ) || null;
+
+  const externalId =
+    safeText(
+      details.providerPostId ||
+        details.externalId ||
+        "",
+      500
+    ) || null;
+
+  const externalUrl =
+    safeText(
+      details.externalUrl ||
+        "",
+      2000
+    ) || null;
+
+  const providerName =
+    safeText(
+      details.providerName ||
+        "",
+      200
+    ) || null;
+
+  const scheduledAt =
+    normalizeDate(
+      details.scheduledAt
+    );
+
+  const publishedAt =
+    normalizeDate(
+      details.publishedAt
+    );
+
+  const publishingResult =
+    normalizeJSON(
+      details.publishingResult ||
+        details.publishing,
+      null
+    );
+
+  const safetyResult =
+    normalizeJSON(
+      details.safetyResult ||
+        details.safety,
+      null
+    );
+
+  const result = await db.query(
+    `
+    UPDATE content_distribution
+    SET
+      status = $2,
+      provider_name =
+        COALESCE($3, provider_name),
+      external_id =
+        COALESCE($4, external_id),
+      external_url =
+        COALESCE($5, external_url),
+      scheduled_at =
+        COALESCE($6, scheduled_at),
+      published_at =
+        COALESCE($7, published_at),
+      error = $8,
+      publishing_result =
+        COALESCE(
+          $9::jsonb,
+          publishing_result
+        ),
+      safety_result =
+        COALESCE(
+          $10::jsonb,
+          safety_result
+        ),
+      attempts =
+        CASE
+          WHEN $2 IN (
+            'published',
+            'failed'
+          )
+          THEN attempts + 1
+          ELSE attempts
+        END,
+      last_attempt_at =
+        CASE
+          WHEN $2 IN (
+            'published',
+            'failed'
+          )
+          THEN CURRENT_TIMESTAMP
+          ELSE last_attempt_at
+        END,
+      updated_at =
+        CURRENT_TIMESTAMP
+    WHERE id = $1
+    RETURNING *
+    `,
+    [
+      distributionId,
+      normalizedStatus,
+      providerName,
+      externalId,
+      externalUrl,
+      scheduledAt,
+      publishedAt,
+      errorMessage,
+      publishingResult
+        ? JSON.stringify(
+            publishingResult
+          )
+        : null,
+      safetyResult
+        ? JSON.stringify(
+            safetyResult
+          )
+        : null,
+    ]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error(
+      `Distribution job not found: ${distributionId}`
+    );
+  }
+
+  return {
+    success: true,
+    item: result.rows[0],
+  };
+}
+
+/* =========================
+   MARK PUBLISHED
+========================= */
+
+export async function markDistributionPublished(
+  db,
+  id,
+  publishingResult = {}
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.PUBLISHED,
+    {
+      publishingResult,
+      publishedAt:
+        publishingResult?.publishedAt ||
+        new Date(),
+      providerName:
+        publishingResult?.providerName,
+      providerPostId:
+        publishingResult?.providerPostId ||
+        publishingResult?.externalId,
+      externalUrl:
+        publishingResult?.externalUrl,
+    }
+  );
+}
+
+/* =========================
+   MARK FAILED
+========================= */
+
+export async function markDistributionFailed(
+  db,
+  id,
+  error
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.FAILED,
+    {
+      errorMessage:
+        error?.message ||
+        String(error || "Distribution failed"),
+    }
+  );
+}
+
+/* =========================
+   MARK SCHEDULED
+========================= */
+
+export async function markDistributionScheduled(
+  db,
+  id,
+  scheduleData = {}
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.SCHEDULED,
+    {
+      scheduledAt:
+        scheduleData?.scheduledAt ||
+        scheduleData?.nextPublishAt,
+      publishingResult:
+        scheduleData,
+   
