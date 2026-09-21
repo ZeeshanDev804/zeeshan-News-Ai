@@ -32,6 +32,16 @@ function validArticleId(
   );
 }
 
+function normalizePublicationStatus(
+  value
+) {
+  return String(
+    value || "pending"
+  )
+    .trim()
+    .toLowerCase();
+}
+
 /* =========================
    LOAD ARTICLE
 ========================= */
@@ -82,6 +92,12 @@ async function getArticle(
         legal_review_required,
         legal_notes,
         takedown_status,
+        publication_status,
+        publication_risk,
+        publication_action,
+        publication_score,
+        publication_reasons,
+        publication_checked_at,
         published_at,
         created_at,
         updated_at
@@ -186,6 +202,25 @@ export async function evaluateArticlePublication(
       article
     );
 
+  const status =
+    decision.legalBlock
+      ? "held"
+      : decision.publishAllowed
+        ? "approved"
+        : decision.requiresApproval
+          ? "awaiting_ceo_approval"
+          : "held";
+
+  const action =
+    decision.legalBlock
+      ? "hold"
+      : decision.action;
+
+  const risk =
+    decision.legalBlock
+      ? "high"
+      : decision.risk;
+
   await db.query(
     `
     UPDATE articles
@@ -202,15 +237,11 @@ export async function evaluateArticlePublication(
     WHERE id = $6
     `,
     [
-      decision.publishAllowed
-        ? "approved"
-        : decision.requiresApproval
-          ? "awaiting_ceo_approval"
-          : "held",
+      status,
 
-      decision.risk,
+      risk,
 
-      decision.action,
+      action,
 
       Number(
         decision.score
@@ -234,11 +265,11 @@ export async function evaluateArticlePublication(
     articleId:
       article.id,
 
-    risk:
-      decision.risk,
+    status,
 
-    action:
-      decision.action,
+    risk,
+
+    action,
 
     score:
       decision.score,
@@ -294,22 +325,40 @@ export async function sendArticleToCEOApproval(
       `
       UPDATE articles
       SET
-        publication_status = 'held',
-        publication_risk = 'high',
-        publication_action = 'hold',
-        publication_score = $1,
-        publication_reasons = $2,
+        publication_status =
+          'held',
+
+        publication_risk =
+          'high',
+
+        publication_action =
+          'hold',
+
+        publication_score =
+          $1,
+
+        publication_reasons =
+          $2,
+
         publication_checked_at =
           CURRENT_TIMESTAMP,
+
         updated_at =
           CURRENT_TIMESTAMP
+
       WHERE id = $3
       `,
       [
-        decision.score,
+        Number(
+          decision.score
+        ) || 0,
 
         JSON.stringify(
-          decision.reasons
+          Array.isArray(
+            decision.reasons
+          )
+            ? decision.reasons
+            : []
         ),
 
         article.id,
@@ -324,6 +373,9 @@ export async function sendArticleToCEOApproval(
 
       status:
         "held",
+
+      risk:
+        "high",
 
       reason:
         "Legal protection blocked publication",
@@ -367,12 +419,18 @@ export async function sendArticleToCEOApproval(
           decision.risk,
 
         riskScore:
-          decision.score,
+          Number(
+            decision.score
+          ) || 0,
 
         reason:
-          decision.reasons.join(
-            "; "
-          ),
+          Array.isArray(
+            decision.reasons
+          )
+            ? decision.reasons.join(
+                "; "
+              )
+            : "Medium-risk content requires CEO approval",
 
         requestedBy:
           safeText(
@@ -412,10 +470,16 @@ export async function sendArticleToCEOApproval(
     [
       decision.risk,
 
-      decision.score,
+      Number(
+        decision.score
+      ) || 0,
 
       JSON.stringify(
-        decision.reasons
+        Array.isArray(
+          decision.reasons
+        )
+          ? decision.reasons
+          : []
       ),
 
       article.id,
@@ -461,6 +525,10 @@ export async function checkPublicationGate(
     );
   }
 
+  await ensurePublicationGateTable(
+    db
+  );
+
   const article =
     await getArticle(
       db,
@@ -472,6 +540,10 @@ export async function checkPublicationGate(
       article
     );
 
+  /*
+   * Legal / copyright / takedown
+   * protection always wins.
+   */
   if (
     decision.legalBlock
   ) {
@@ -495,6 +567,10 @@ export async function checkPublicationGate(
     };
   }
 
+  /*
+   * High-risk content can never
+   * pass this gate automatically.
+   */
   if (
     decision.risk === "high"
   ) {
@@ -518,6 +594,48 @@ export async function checkPublicationGate(
     };
   }
 
+  /*
+   * Important:
+   *
+   * If a medium-risk article was
+   * already approved by the CEO,
+   * respect the persisted approval.
+   *
+   * Do not send it back into the
+   * approval loop.
+   */
+  if (
+    normalizePublicationStatus(
+      article.publication_status
+    ) === "approved"
+  ) {
+    return {
+      allowed: true,
+
+      status:
+        "approved",
+
+      risk:
+        decision.risk,
+
+      action:
+        "auto_publish",
+
+      reason:
+        "Article has passed the CEO publication approval",
+
+      legalBlock:
+        false,
+
+      ceoApproved:
+        true,
+    };
+  }
+
+  /*
+   * Medium-risk content requires
+   * CEO approval.
+   */
   if (
     decision.risk === "medium"
   ) {
@@ -538,9 +656,16 @@ export async function checkPublicationGate(
 
       legalBlock:
         false,
+
+      ceoApproved:
+        false,
     };
   }
 
+  /*
+   * Low-risk content can proceed
+   * automatically.
+   */
   return {
     allowed: true,
 
@@ -557,6 +682,9 @@ export async function checkPublicationGate(
       "Low-risk content passed publication gate",
 
     legalBlock:
+      false,
+
+    ceoApproved:
       false,
   };
 }
@@ -621,8 +749,21 @@ export async function approveArticleForPublication(
         publication_status =
           'approved',
 
+        publication_risk =
+          $2,
+
         publication_action =
           'auto_publish',
+
+        publication_reasons =
+          CASE
+            WHEN publication_reasons IS NULL
+              THEN $3::jsonb
+            ELSE publication_reasons
+          END,
+
+        publication_checked_at =
+          CURRENT_TIMESTAMP,
 
         updated_at =
           CURRENT_TIMESTAMP
@@ -632,10 +773,21 @@ export async function approveArticleForPublication(
       RETURNING
         id,
         publication_status,
+        publication_risk,
         publication_action,
+        publication_reasons,
+        publication_checked_at,
         updated_at
       `,
-      [article.id]
+      [
+        article.id,
+
+        decision.risk,
+
+        JSON.stringify([
+          `CEO approved publication (${actor})`,
+        ]),
+      ]
     );
 
   return {
@@ -652,6 +804,9 @@ export async function approveArticleForPublication(
 
     action:
       "auto_publish",
+
+    risk:
+      decision.risk,
 
     record:
       result.rows[0] ||
@@ -812,6 +967,9 @@ export function getContentPublicationGateStatus() {
       true,
 
     databasePersistence:
+      true,
+
+    ceoApprovalPersists:
       true,
 
     fakeTraffic:
