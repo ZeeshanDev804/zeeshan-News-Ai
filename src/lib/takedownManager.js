@@ -20,44 +20,58 @@ const VALID_TAKEDOWN_STATUSES = [
   "resolved",
 ];
 
+const MAX_LIMIT = 500;
+
 function normalizeValue(value, fallback = "") {
   return String(value ?? fallback).trim();
 }
 
 function normalizeStatus(status) {
-  const value = normalizeValue(
-    status,
-    "received"
-  ).toLowerCase();
+  const value = normalizeValue(status, "received").toLowerCase();
 
-  return VALID_TAKEDOWN_STATUSES.includes(value)
-    ? value
-    : "received";
+  if (!VALID_TAKEDOWN_STATUSES.includes(value)) {
+    throw new Error(
+      `Invalid takedown status. Allowed values: ${VALID_TAKEDOWN_STATUSES.join(", ")}`
+    );
+  }
+
+  return value;
 }
 
 function validateArticleId(articleId) {
   const id = Number(articleId);
 
-  if (!Number.isFinite(id) || id <= 0) {
+  if (!Number.isInteger(id) || id <= 0) {
     throw new Error("Valid article ID is required");
   }
 
   return id;
 }
 
-export async function createTakedownComplaint(
-  db,
-  articleId,
-  complaint = {}
-) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
+function validateDatabase(db) {
+  if (!db || typeof db.query !== "function") {
+    throw new Error("Database connection is required");
+  }
+}
+
+function normalizeLimit(limit) {
+  const numericLimit = Number(limit);
+
+  if (!Number.isFinite(numericLimit)) {
+    return 100;
   }
 
-  const id = validateArticleId(articleId);
+  return Math.min(
+    Math.max(Math.floor(numericLimit), 1),
+    MAX_LIMIT
+  );
+}
 
+function normalizeActor(actor) {
+  return normalizeValue(actor, "ceo") || "ceo";
+}
+
+function normalizeComplaint(complaint = {}) {
   const complainantName = normalizeValue(
     complaint.complainantName,
     "Unknown"
@@ -76,15 +90,48 @@ export async function createTakedownComplaint(
     complaint.sourceUrl
   );
 
+  return {
+    complainantName,
+    complainantEmail,
+    reason,
+    sourceUrl,
+  };
+}
+
+/**
+ * Create a new copyright/takedown complaint.
+ *
+ * A new complaint immediately:
+ * 1. Gets stored in takedown_complaints.
+ * 2. Changes article takedown status to received.
+ * 3. Places the article on legal hold.
+ * 4. Marks the case for legal review.
+ * 5. Writes audit records.
+ */
+export async function createTakedownComplaint(
+  db,
+  articleId,
+  complaint = {}
+) {
+  validateDatabase(db);
+
+  const id = validateArticleId(articleId);
+
+  const {
+    complainantName,
+    complainantEmail,
+    reason,
+    sourceUrl,
+  } = normalizeComplaint(complaint);
+
   const details = {
     complainantName,
     complainantEmail,
     reason,
     sourceUrl,
-    receivedAt: new Date(),
+    receivedAt: new Date().toISOString(),
   };
 
-  // Save complaint in dedicated database table
   const complaintResult = await db.query(
     `
     INSERT INTO takedown_complaints
@@ -119,6 +166,9 @@ export async function createTakedownComplaint(
     ]
   );
 
+  const complaintRow =
+    complaintResult.rows[0] || null;
+
   await updateTakedownStatus(
     db,
     id,
@@ -126,20 +176,18 @@ export async function createTakedownComplaint(
     reason
   );
 
-  const holdResult =
-    await placeLegalHold(
-      db,
-      id,
-      `Takedown complaint received: ${reason}`
-    );
+  const holdResult = await placeLegalHold(
+    db,
+    id,
+    `Takedown complaint received: ${reason}`
+  );
 
   await recordTakedownComplaint(
     db,
     id,
     {
       ...details,
-      complaintId:
-        complaintResult.rows[0]?.id || null,
+      complaintId: complaintRow?.id || null,
     },
     "system"
   );
@@ -157,12 +205,14 @@ export async function createTakedownComplaint(
     takedownStatus: "received",
     legalHold: true,
     legalReviewRequired: true,
-    complaint:
-      complaintResult.rows[0],
+    complaint: complaintRow,
     hold: holdResult,
   };
 }
 
+/**
+ * Change the current takedown status.
+ */
 export async function changeTakedownStatus(
   db,
   articleId,
@@ -170,11 +220,7 @@ export async function changeTakedownStatus(
   note = "",
   actor = "ceo"
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
   const id = validateArticleId(articleId);
 
@@ -184,13 +230,15 @@ export async function changeTakedownStatus(
   const normalizedNote =
     normalizeValue(note);
 
-  const result =
-    await updateTakedownStatus(
-      db,
-      id,
-      normalizedStatus,
-      normalizedNote
-    );
+  const normalizedActor =
+    normalizeActor(actor);
+
+  const result = await updateTakedownStatus(
+    db,
+    id,
+    normalizedStatus,
+    normalizedNote
+  );
 
   await db.query(
     `
@@ -216,32 +264,41 @@ export async function changeTakedownStatus(
       reason:
         normalizedNote ||
         `Takedown status changed to ${normalizedStatus}`,
-      takedownStatus:
-        normalizedStatus,
+      takedownStatus: normalizedStatus,
     },
-    actor
+    normalizedActor
   );
 
   return {
     success: true,
     articleId: id,
     takedownStatus:
-      result.takedownStatus,
-    actor,
+      result?.takedownStatus ||
+      normalizedStatus,
+    actor: normalizedActor,
   };
 }
 
+/**
+ * Resolve a takedown complaint.
+ *
+ * cleared:
+ * - Complaint resolved.
+ * - Legal hold released.
+ * - Legal review completed.
+ *
+ * action_taken:
+ * - Action has been taken against the article.
+ * - Legal hold remains active.
+ * - Legal review remains required.
+ */
 export async function resolveTakedownComplaint(
   db,
   articleId,
   decision = {},
   actor = "ceo"
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
   const id = validateArticleId(articleId);
 
@@ -253,6 +310,9 @@ export async function resolveTakedownComplaint(
     decision.note,
     "Takedown complaint resolved"
   );
+
+  const normalizedActor =
+    normalizeActor(actor);
 
   if (
     outcome !== "cleared" &&
@@ -294,7 +354,7 @@ export async function resolveTakedownComplaint(
       db,
       id,
       note,
-      actor
+      normalizedActor
     );
 
     await recordManualReview(
@@ -305,7 +365,7 @@ export async function resolveTakedownComplaint(
         reason: note,
         outcome: "cleared",
       },
-      actor
+      normalizedActor
     );
 
     return {
@@ -316,6 +376,7 @@ export async function resolveTakedownComplaint(
       legalHold: false,
       legalReviewRequired: false,
       copyrightStatus: "cleared",
+      actor: normalizedActor,
     };
   }
 
@@ -347,7 +408,7 @@ export async function resolveTakedownComplaint(
       reason: note,
       outcome: "action_taken",
     },
-    actor
+    normalizedActor
   );
 
   return {
@@ -357,20 +418,20 @@ export async function resolveTakedownComplaint(
     takedownStatus: "action_taken",
     legalHold: true,
     legalReviewRequired: true,
+    actor: normalizedActor,
   };
 }
 
+/**
+ * Reject a takedown complaint after review.
+ */
 export async function rejectTakedownComplaint(
   db,
   articleId,
   reason,
   actor = "ceo"
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
   const id = validateArticleId(articleId);
 
@@ -378,6 +439,9 @@ export async function rejectTakedownComplaint(
     reason,
     "Takedown complaint rejected after review"
   );
+
+  const normalizedActor =
+    normalizeActor(actor);
 
   await updateTakedownStatus(
     db,
@@ -409,7 +473,7 @@ export async function rejectTakedownComplaint(
     db,
     id,
     note,
-    actor
+    normalizedActor
   );
 
   await recordManualReview(
@@ -420,7 +484,7 @@ export async function rejectTakedownComplaint(
       reason: note,
       outcome: "rejected",
     },
-    actor
+    normalizedActor
   );
 
   return {
@@ -431,29 +495,37 @@ export async function rejectTakedownComplaint(
     legalHold: false,
     legalReviewRequired: false,
     copyrightStatus: "cleared",
+    actor: normalizedActor,
   };
 }
 
+/**
+ * Get takedown complaints.
+ *
+ * Optional status filter:
+ * none
+ * received
+ * under_review
+ * action_taken
+ * rejected
+ * resolved
+ */
 export async function getTakedownComplaints(
   db,
   status = null,
   limit = 100
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
-  const safeLimit = Math.min(
-    Math.max(Number(limit) || 100, 1),
-    500
-  );
+  const safeLimit =
+    normalizeLimit(limit);
 
   const normalizedStatus =
-    status
-      ? normalizeStatus(status)
-      : null;
+    status === null ||
+    status === undefined ||
+    normalizeValue(status) === ""
+      ? null
+      : normalizeStatus(status);
 
   const result = await db.query(
     `
@@ -504,15 +576,14 @@ export async function getTakedownComplaints(
   return result.rows;
 }
 
+/**
+ * Get the latest takedown case for an article.
+ */
 export async function getTakedownCase(
   db,
   articleId
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
   const id = validateArticleId(articleId);
 
@@ -545,7 +616,8 @@ export async function getTakedownCase(
     INNER JOIN articles a
       ON a.id = tc.article_id
 
-    WHERE tc.article_id = $1
+    WHERE
+      tc.article_id = $1
 
     ORDER BY
       tc.created_at DESC
@@ -562,8 +634,9 @@ export async function getTakedownCase(
   return result.rows[0];
 }
 
+/**
+ * Return all supported takedown statuses.
+ */
 export function getTakedownStatuses() {
-  return [
-    ...VALID_TAKEDOWN_STATUSES,
-  ];
+  return [...VALID_TAKEDOWN_STATUSES];
 }
