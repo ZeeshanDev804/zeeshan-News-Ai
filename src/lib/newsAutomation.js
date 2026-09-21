@@ -28,9 +28,79 @@ import {
   cleanupAllOperationalLogs,
 } from "./adminAuditRetention.js";
 
+import {
+  getAutomationControl,
+  assertAutomationAllowed,
+} from "./automationControl.js";
+
 let automationRunning = false;
 let lastRun = null;
 let lastReport = null;
+
+/* =========================
+   AUTOMATION CONTROL GUARD
+========================= */
+
+async function checkAutomationControl(
+  db
+) {
+  const state =
+    await getAutomationControl(
+      db
+    );
+
+  if (
+    state.enabled !== true ||
+    state.emergencyStop === true
+  ) {
+    const reason =
+      state.reason ||
+      (
+        state.emergencyStop
+          ? "Emergency stop is active"
+          : "Automation is disabled"
+      );
+
+    return {
+      allowed: false,
+
+      emergencyStop:
+        state.emergencyStop === true,
+
+      enabled:
+        state.enabled === true,
+
+      reason,
+    };
+  }
+
+  return {
+    allowed: true,
+
+    emergencyStop: false,
+
+    enabled: true,
+
+    reason: "",
+  };
+}
+
+async function requireAutomationAllowed(
+  db,
+  stage
+) {
+  try {
+    await assertAutomationAllowed(
+      db
+    );
+
+    return true;
+  } catch (error) {
+    throw new Error(
+      `AUTOMATION_STOPPED at ${stage}: ${error.message}`
+    );
+  }
+}
 
 /* =========================
    GET UNANALYZED ARTICLES
@@ -151,6 +221,11 @@ async function saveAIResult(
 async function processUnanalyzedNews(
   db
 ) {
+  await requireAutomationAllowed(
+    db,
+    "AI"
+  );
+
   const articles =
     await getUnanalyzedArticles(
       db,
@@ -181,6 +256,11 @@ async function processUnanalyzedNews(
   for (
     const analysis of analyses
   ) {
+    await requireAutomationAllowed(
+      db,
+      "AI result saving"
+    );
+
     const result =
       await saveAIResult(
         db,
@@ -211,6 +291,11 @@ async function runArticleCleanup(
   db
 ) {
   try {
+    await requireAutomationAllowed(
+      db,
+      "Article Cleanup"
+    );
+
     console.log(
       "🧹 Running article cleanup..."
     );
@@ -232,6 +317,15 @@ async function runArticleCleanup(
 
     return report;
   } catch (error) {
+    if (
+      String(error.message)
+        .startsWith(
+          "AUTOMATION_STOPPED"
+        )
+    ) {
+      throw error;
+    }
+
     console.error(
       "❌ Article cleanup failed:",
       error.message
@@ -254,6 +348,11 @@ async function runOperationalCleanup(
   db
 ) {
   try {
+    await requireAutomationAllowed(
+      db,
+      "Operational Cleanup"
+    );
+
     console.log(
       "🧽 Running operational log cleanup..."
     );
@@ -283,6 +382,15 @@ async function runOperationalCleanup(
 
     return report;
   } catch (error) {
+    if (
+      String(error.message)
+        .startsWith(
+          "AUTOMATION_STOPPED"
+        )
+    ) {
+      throw error;
+    }
+
     console.error(
       "❌ Operational cleanup failed:",
       error.message
@@ -317,6 +425,11 @@ async function runTrending(
   db
 ) {
   try {
+    await requireAutomationAllowed(
+      db,
+      "Trending"
+    );
+
     console.log(
       "📈 Running trending intelligence..."
     );
@@ -334,6 +447,15 @@ async function runTrending(
 
     return report;
   } catch (error) {
+    if (
+      String(error.message)
+        .startsWith(
+          "AUTOMATION_STOPPED"
+        )
+    ) {
+      throw error;
+    }
+
     console.error(
       "❌ Trending failed:",
       error.message
@@ -357,6 +479,11 @@ async function runRss(
   db
 ) {
   try {
+    await requireAutomationAllowed(
+      db,
+      "RSS"
+    );
+
     console.log(
       "📡 Running RSS news engine..."
     );
@@ -378,6 +505,15 @@ async function runRss(
 
     return report;
   } catch (error) {
+    if (
+      String(error.message)
+        .startsWith(
+          "AUTOMATION_STOPPED"
+        )
+    ) {
+      throw error;
+    }
+
     console.error(
       "❌ RSS engine failed:",
       error.message
@@ -437,6 +573,50 @@ export async function runNewsAutomation(
     };
   }
 
+  /* =========================
+     INITIAL CONTROL CHECK
+  ========================= */
+
+  const control =
+    await checkAutomationControl(
+      db
+    );
+
+  if (!control.allowed) {
+    const stoppedReport = {
+      success: false,
+
+      skipped: true,
+
+      automationStopped: true,
+
+      emergencyStop:
+        control.emergencyStop,
+
+      enabled:
+        control.enabled,
+
+      reason:
+        control.reason,
+
+      timestamp:
+        new Date().toISOString(),
+    };
+
+    lastRun =
+      new Date();
+
+    lastReport =
+      stoppedReport;
+
+    console.warn(
+      "🛑 NEWS AUTOMATION BLOCKED:",
+      control.reason
+    );
+
+    return stoppedReport;
+  }
+
   automationRunning = true;
 
   const startedAt =
@@ -461,6 +641,11 @@ export async function runNewsAutomation(
        HISTORY START
     ========================= */
 
+    await requireAutomationAllowed(
+      db,
+      "History Start"
+    );
+
     historyRun =
       await createAutomationRun(
         db,
@@ -480,6 +665,11 @@ export async function runNewsAutomation(
        2. AI
     ========================= */
 
+    await requireAutomationAllowed(
+      db,
+      "Before AI"
+    );
+
     const aiReport =
       await processUnanalyzedNews(
         db
@@ -488,6 +678,11 @@ export async function runNewsAutomation(
     /* =========================
        3. TRENDING
     ========================= */
+
+    await requireAutomationAllowed(
+      db,
+      "Before Trending"
+    );
 
     const trendingReport =
       await runTrending(
@@ -498,6 +693,11 @@ export async function runNewsAutomation(
        4. ARTICLE CLEANUP
     ========================= */
 
+    await requireAutomationAllowed(
+      db,
+      "Before Article Cleanup"
+    );
+
     const cleanupReport =
       await runArticleCleanup(
         db
@@ -507,10 +707,24 @@ export async function runNewsAutomation(
        5. OPERATIONAL CLEANUP
     ========================= */
 
+    await requireAutomationAllowed(
+      db,
+      "Before Operational Cleanup"
+    );
+
     const operationalCleanupReport =
       await runOperationalCleanup(
         db
       );
+
+    /* =========================
+       FINAL CONTROL CHECK
+    ========================= */
+
+    await requireAutomationAllowed(
+      db,
+      "Finalization"
+    );
 
     const completedAt =
       new Date();
@@ -536,6 +750,11 @@ export async function runNewsAutomation(
 
       operationalCleanup:
         operationalCleanupReport,
+
+      automationControl: {
+        emergencyStop: false,
+        enabled: true,
+      },
     };
 
     /* =========================
@@ -628,12 +847,21 @@ export async function runNewsAutomation(
     const completedAt =
       new Date();
 
+    const stopped =
+      String(error.message)
+        .includes(
+          "AUTOMATION_STOPPED"
+        );
+
     const report = {
       success: false,
 
       startedAt,
 
       completedAt,
+
+      automationStopped:
+        stopped,
 
       error:
         error.message,
@@ -647,12 +875,21 @@ export async function runNewsAutomation(
       historyRun?.id
     ) {
       try {
-        await failAutomationRun(
-          db,
-          historyRun.id,
-          error,
-          report
-        );
+        if (stopped) {
+          await failAutomationRun(
+            db,
+            historyRun.id,
+            error,
+            report
+          );
+        } else {
+          await failAutomationRun(
+            db,
+            historyRun.id,
+            error,
+            report
+          );
+        }
       } catch (
         historyError
       ) {
@@ -677,7 +914,7 @@ export async function runNewsAutomation(
     ) {
       console.error(
         "⚠️ Automation failure health logging failed:",
-        healthError.message
+      healthError.message
       );
     }
 
@@ -687,10 +924,17 @@ export async function runNewsAutomation(
     lastReport =
       report;
 
-    console.error(
-      "❌ News automation failed:",
-      error.message
-    );
+    if (stopped) {
+      console.warn(
+        "🛑 NEWS AUTOMATION STOPPED BY CONTROL:",
+        error.message
+      );
+    } else {
+      console.error(
+        "❌ News automation failed:",
+        error.message
+      );
+    }
 
     return report;
 
@@ -740,6 +984,15 @@ export function getAutomationStatus() {
       true,
 
     productionHealthLogging:
+      true,
+
+    emergencyStopControl:
+      true,
+
+    ceoAutomationControl:
+      true,
+
+    stopGuardBeforeStages:
       true,
 
     fakeTraffic:
