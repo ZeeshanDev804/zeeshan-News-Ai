@@ -4,22 +4,68 @@
 ========================= */
 
 const DEFAULT_MAX_FAILURES = 5;
+const DEFAULT_WARNING_FAILURES = 3;
 const DEFAULT_RETRY_LIMIT = 3;
+const MAX_LIMIT = 500;
+const MAX_ERROR_LENGTH = 2000;
 
 /* =========================
    SAFE NUMBER
 ========================= */
 
-function safeNumber(
-  value,
-  fallback = 0
-) {
-  const number =
-    Number(value);
+function safeNumber(value, fallback = 0) {
+  const number = Number(value);
 
   return Number.isFinite(number)
     ? number
     : fallback;
+}
+
+/* =========================
+   SAFE TEXT
+========================= */
+
+function safeText(value, fallback = "") {
+  const text = String(
+    value ?? fallback
+  ).trim();
+
+  return text;
+}
+
+/* =========================
+   SAFE LIMIT
+========================= */
+
+function safeLimit(
+  value,
+  fallback = 100
+) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+
+  return Math.min(
+    Math.max(Math.floor(number), 1),
+    MAX_LIMIT
+  );
+}
+
+/* =========================
+   DATABASE VALIDATION
+========================= */
+
+function validateDatabase(db) {
+  if (
+    !db ||
+    typeof db.query !== "function"
+  ) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
 }
 
 /* =========================
@@ -29,11 +75,7 @@ function safeNumber(
 export async function ensureProductionMonitorTables(
   db
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS source_failure_log (
@@ -119,59 +161,53 @@ export async function recordSourceFailure(
   source,
   error
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
-  await ensureProductionMonitorTables(
-    db
-  );
+  await ensureProductionMonitorTables(db);
 
   const safeSource =
-    String(
-      source || "unknown"
-    ).trim();
+    safeText(source, "unknown") ||
+    "unknown";
 
   const errorMessage =
-    String(
+    safeText(
       error?.message ||
-      error ||
-      "Unknown source error"
-    ).slice(0, 2000);
+        error ||
+        "Unknown source error"
+    ).slice(0, MAX_ERROR_LENGTH);
 
-  const result =
-    await db.query(
-      `
-      SELECT
-        id,
-        failure_count
-      FROM source_failure_log
+  const result = await db.query(
+    `
+    SELECT
+      id,
+      failure_count
 
-      WHERE
-        source = $1
+    FROM source_failure_log
 
-      AND
-        resolved = FALSE
+    WHERE
+      source = $1
 
-      ORDER BY
-        id DESC
+    AND
+      resolved = FALSE
 
-      LIMIT 1
-      `,
-      [safeSource]
-    );
+    ORDER BY
+      id DESC
 
-  if (
-    result.rows.length > 0
-  ) {
+    LIMIT 1
+    `,
+    [safeSource]
+  );
+
+  if (result.rows.length > 0) {
     const existing =
       result.rows[0];
 
     const failureCount =
-      safeNumber(
-        existing.failure_count,
+      Math.max(
+        safeNumber(
+          existing.failure_count,
+          0
+        ),
         0
       ) + 1;
 
@@ -189,7 +225,11 @@ export async function recordSourceFailure(
             CURRENT_TIMESTAMP,
 
           updated_at =
-            CURRENT_TIMESTAMP
+            CURRENT_TIMESTAMP,
+
+          resolved = FALSE,
+
+          resolved_at = NULL
 
         WHERE id = $3
 
@@ -247,15 +287,13 @@ export async function resolveSourceFailure(
   db,
   source
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
-  await ensureProductionMonitorTables(
-    db
-  );
+  await ensureProductionMonitorTables(db);
+
+  const safeSource =
+    safeText(source, "unknown") ||
+    "unknown";
 
   const result =
     await db.query(
@@ -279,11 +317,7 @@ export async function resolveSourceFailure(
 
       RETURNING *
       `,
-      [
-        String(
-          source || "unknown"
-        ).trim(),
-      ]
+      [safeSource]
     );
 
   return result.rows;
@@ -297,24 +331,12 @@ export async function getFailedSources(
   db,
   limit = 100
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
-  await ensureProductionMonitorTables(
-    db
-  );
+  await ensureProductionMonitorTables(db);
 
-  const safeLimit =
-    Math.min(
-      Math.max(
-        Number(limit) || 100,
-        1
-      ),
-      500
-    );
+  const safeMax =
+    safeLimit(limit);
 
   const result =
     await db.query(
@@ -331,7 +353,7 @@ export async function getFailedSources(
 
       LIMIT $1
       `,
-      [safeLimit]
+      [safeMax]
     );
 
   return result.rows;
@@ -345,16 +367,13 @@ export async function checkSourceHealth(
   db,
   source
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
+
+  await ensureProductionMonitorTables(db);
 
   const safeSource =
-    String(
-      source || "unknown"
-    ).trim();
+    safeText(source, "unknown") ||
+    "unknown";
 
   const result =
     await db.query(
@@ -388,34 +407,33 @@ export async function checkSourceHealth(
 
   const failureCount =
     safeNumber(
-      row.failure_count
+      row.failure_count,
+      0
     );
 
-  let status =
-    "healthy";
+  let status = "healthy";
 
   if (
     failureCount >=
     DEFAULT_MAX_FAILURES
   ) {
-    status =
-      "critical";
+    status = "critical";
   } else if (
-    failureCount >= 3
+    failureCount >=
+    DEFAULT_WARNING_FAILURES
   ) {
-    status =
-      "warning";
+    status = "warning";
   }
 
   return {
-    source:
-      safeSource,
+    source: safeSource,
 
     status,
 
     failureEvents:
       safeNumber(
-        row.failure_events
+        row.failure_events,
+        0
       ),
 
     failureCount,
@@ -424,8 +442,7 @@ export async function checkSourceHealth(
       row.last_failed_at ||
       null,
 
-    automaticRetry:
-      true,
+    automaticRetry: true,
 
     retryLimit:
       DEFAULT_RETRY_LIMIT,
@@ -440,8 +457,8 @@ export function shouldRetry(
   attempt
 ) {
   const currentAttempt =
-    safeNumber(
-      attempt,
+    Math.max(
+      safeNumber(attempt, 0),
       0
     );
 
@@ -451,23 +468,27 @@ export function shouldRetry(
   );
 }
 
+/* =========================
+   RETRY DELAY
+========================= */
+
 export function getRetryDelay(
   attempt
 ) {
   const currentAttempt =
     Math.max(
-      safeNumber(
-        attempt,
-        0
-      ),
+      safeNumber(attempt, 0),
       0
     );
 
   /*
    * Exponential backoff:
-   * 1st retry = 2 seconds
-   * 2nd retry = 4 seconds
-   * 3rd retry = 8 seconds
+   *
+   * attempt 0 = 1 second
+   * attempt 1 = 2 seconds
+   * attempt 2 = 4 seconds
+   *
+   * Maximum delay = 30 seconds
    */
 
   return Math.min(
@@ -491,15 +512,34 @@ export async function recordProductionHealth(
   message = "",
   details = {}
 ) {
-  if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
-  }
+  validateDatabase(db);
 
-  await ensureProductionMonitorTables(
-    db
-  );
+  await ensureProductionMonitorTables(db);
+
+  const safeComponent =
+    safeText(
+      component,
+      "unknown"
+    ) || "unknown";
+
+  const safeStatus =
+    safeText(
+      status,
+      "unknown"
+    ) || "unknown";
+
+  const safeMessage =
+    safeText(message)
+      .slice(
+        0,
+        MAX_ERROR_LENGTH
+      );
+
+  const safeDetails =
+    details &&
+    typeof details === "object"
+      ? details
+      : {};
 
   const result =
     await db.query(
@@ -523,20 +563,11 @@ export async function recordProductionHealth(
       RETURNING *
       `,
       [
-        String(
-          component || "unknown"
-        ).trim(),
-
-        String(
-          status || "unknown"
-        ).trim(),
-
-        String(
-          message || ""
-        ).slice(0, 2000),
-
+        safeComponent,
+        safeStatus,
+        safeMessage,
         JSON.stringify(
-          details || {}
+          safeDetails
         ),
       ]
     );
@@ -551,13 +582,32 @@ export async function recordProductionHealth(
 export async function getProductionHealth(
   db
 ) {
-  if (!db) {
+  if (
+    !db ||
+    typeof db.query !== "function"
+  ) {
     return {
-      status:
-        "critical",
+      status: "critical",
 
       database:
         "unavailable",
+
+      failedSources: 0,
+
+      warningSources: 0,
+
+      criticalSources: 0,
+
+      retryEnabled: true,
+
+      retryLimit:
+        DEFAULT_RETRY_LIMIT,
+
+      sourceFailureTracking:
+        true,
+
+      healthMonitoring:
+        true,
 
       timestamp:
         new Date().toISOString(),
@@ -576,45 +626,47 @@ export async function getProductionHealth(
     const failedSources =
       await getFailedSources(
         db,
-        100
+        MAX_LIMIT
       );
 
     const criticalSources =
       failedSources.filter(
         (item) =>
           safeNumber(
-            item.failure_count
+            item.failure_count,
+            0
           ) >=
           DEFAULT_MAX_FAILURES
       );
 
     const warningSources =
       failedSources.filter(
-        (item) =>
-          safeNumber(
-            item.failure_count
-          ) >= 3 &&
-          safeNumber(
-            item.failure_count
-          ) <
-            DEFAULT_MAX_FAILURES
+        (item) => {
+          const count =
+            safeNumber(
+              item.failure_count,
+              0
+            );
+
+          return (
+            count >=
+              DEFAULT_WARNING_FAILURES &&
+            count <
+              DEFAULT_MAX_FAILURES
+          );
+        }
       );
 
-    let status =
-      "healthy";
+    let status = "healthy";
 
     if (
-      criticalSources.length >
-      0
+      criticalSources.length > 0
     ) {
-      status =
-        "critical";
+      status = "critical";
     } else if (
-      warningSources.length >
-      0
+      warningSources.length > 0
     ) {
-      status =
-        "warning";
+      status = "warning";
     }
 
     return {
@@ -656,7 +708,13 @@ export async function getProductionHealth(
         "error",
 
       error:
-        error.message,
+        safeText(
+          error?.message,
+          "Production health check failed"
+        ).slice(
+          0,
+          MAX_ERROR_LENGTH
+        ),
 
       retryEnabled:
         true,
@@ -682,15 +740,13 @@ export async function getProductionHealth(
 
 export function getProductionMonitorStatus() {
   return {
-    enabled:
-      true,
+    enabled: true,
 
     engine:
       "ZEESHAN NEWS AI Production Monitor",
 
     retry: {
-      enabled:
-        true,
+      enabled: true,
 
       maximumAttempts:
         DEFAULT_RETRY_LIMIT,
@@ -713,6 +769,9 @@ export function getProductionMonitorStatus() {
 
     criticalFailureThreshold:
       DEFAULT_MAX_FAILURES,
+
+    warningFailureThreshold:
+      DEFAULT_WARNING_FAILURES,
 
     artificialTraffic:
       false,
