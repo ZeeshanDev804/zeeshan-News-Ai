@@ -73,10 +73,7 @@ const DEFAULT_PUBLISH_WINDOWS = {
   },
 };
 
-function normalizeText(
-  value,
-  maxLength = 500
-) {
+function normalizeText(value, maxLength = 500) {
   if (
     value === undefined ||
     value === null
@@ -89,21 +86,14 @@ function normalizeText(
     .slice(0, maxLength);
 }
 
-function normalizePlatform(
-  value
-) {
-  const platform =
-    String(
-      value || "website"
-    )
-      .trim()
-      .toLowerCase();
+function normalizePlatform(value) {
+  const platform = String(
+    value || "website"
+  )
+    .trim()
+    .toLowerCase();
 
-  if (
-    !SUPPORTED_PLATFORMS.has(
-      platform
-    )
-  ) {
+  if (!SUPPORTED_PLATFORMS.has(platform)) {
     throw new Error(
       `Unsupported publishing platform: ${platform}`
     );
@@ -112,36 +102,26 @@ function normalizePlatform(
   return platform;
 }
 
-function normalizeRegion(
-  value
-) {
-  const region =
-    String(
-      value || "worldwide"
-    )
-      .trim()
-      .toLowerCase();
-
-  return region;
+function normalizeRegion(value) {
+  return String(
+    value || "worldwide"
+  )
+    .trim()
+    .toLowerCase();
 }
 
-function resolveTimezone(
-  region,
-  timezone
-) {
-  const explicit =
-    normalizeText(
-      timezone,
-      100
-    );
+function resolveTimezone(region, timezone) {
+  const explicit = normalizeText(
+    timezone,
+    100
+  );
 
   if (explicit) {
     try {
       new Intl.DateTimeFormat(
         "en-US",
         {
-          timeZone:
-            explicit,
+          timeZone: explicit,
         }
       );
 
@@ -155,92 +135,51 @@ function resolveTimezone(
 
   return (
     REGION_TIMEZONES[
-      normalizeRegion(
-        region
-      )
-    ] ||
-    DEFAULT_TIMEZONE
+      normalizeRegion(region)
+    ] || DEFAULT_TIMEZONE
   );
 }
 
-function getDateParts(
-  date,
-  timezone
-) {
-  const formatter =
-    new Intl.DateTimeFormat(
-      "en-CA",
-      {
-        timeZone:
-          timezone,
+function getDateParts(date, timezone) {
+  const formatter = new Intl.DateTimeFormat(
+    "en-CA",
+    {
+      timeZone: timezone,
 
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
 
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
 
-        hourCycle: "h23",
+      hourCycle: "h23",
 
-        weekday: "short",
-      }
-    );
+      weekday: "short",
+    }
+  );
 
-  const parts =
-    formatter.formatToParts(
-      date
-    );
+  const parts = formatter.formatToParts(
+    date
+  );
 
   const result = {};
 
-  for (
-    const part of parts
-  ) {
-    if (
-      part.type !==
-      "literal"
-    ) {
-      result[
-        part.type
-      ] = part.value;
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      result[part.type] = part.value;
     }
   }
 
   return {
-    year:
-      Number(
-        result.year
-      ),
-
-    month:
-      Number(
-        result.month
-      ),
-
-    day:
-      Number(
-        result.day
-      ),
-
-    hour:
-      Number(
-        result.hour
-      ),
-
-    minute:
-      Number(
-        result.minute
-      ),
-
-    second:
-      Number(
-        result.second
-      ),
-
-    weekday:
-      result.weekday,
+    year: Number(result.year),
+    month: Number(result.month),
+    day: Number(result.day),
+    hour: Number(result.hour),
+    minute: Number(result.minute),
+    second: Number(result.second),
+    weekday: result.weekday,
   };
 }
 
@@ -248,21 +187,19 @@ function getTimezoneOffsetMinutes(
   date,
   timezone
 ) {
-  const parts =
-    getDateParts(
-      date,
-      timezone
-    );
+  const parts = getDateParts(
+    date,
+    timezone
+  );
 
-  const utcRepresentation =
-    Date.UTC(
-      parts.year,
-      parts.month - 1,
-      parts.day,
-      parts.hour,
-      parts.minute,
-      parts.second
-    );
+  const utcRepresentation = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
 
   return (
     (utcRepresentation -
@@ -282,23 +219,21 @@ function zonedDateToUTC(
   },
   timezone
 ) {
-  const approximate =
-    new Date(
-      Date.UTC(
-        year,
-        month - 1,
-        day,
-        hour,
-        minute,
-        second
-      )
-    );
+  const approximate = new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      hour,
+      minute,
+      second
+    )
+  );
 
-  const offset =
-    getTimezoneOffsetMinutes(
-      approximate,
-      timezone
-    );
+  const offset = getTimezoneOffsetMinutes(
+    approximate,
+    timezone
+  );
 
   return new Date(
     approximate.getTime() -
@@ -306,45 +241,30 @@ function zonedDateToUTC(
   );
 }
 
-function addDays(
-  dateParts,
-  days
-) {
-  const base =
-    new Date(
-      Date.UTC(
-        dateParts.year,
-        dateParts.month - 1,
-        dateParts.day
-      )
-    );
+function addDays(dateParts, days) {
+  const base = new Date(
+    Date.UTC(
+      dateParts.year,
+      dateParts.month - 1,
+      dateParts.day
+    )
+  );
 
   base.setUTCDate(
-    base.getUTCDate() +
-      days
+    base.getUTCDate() + days
   );
 
   return {
-    year:
-      base.getUTCFullYear(),
-
-    month:
-      base.getUTCMonth() + 1,
-
-    day:
-      base.getUTCDate(),
+    year: base.getUTCFullYear(),
+    month: base.getUTCMonth() + 1,
+    day: base.getUTCDate(),
   };
 }
 
-function isHourInsideWindow(
-  hour,
-  window
-) {
+function isHourInsideWindow(hour, window) {
   return (
-    hour >=
-      window.startHour &&
-    hour <=
-      window.endHour
+    hour >= window.startHour &&
+    hour <= window.endHour
   );
 }
 
@@ -361,24 +281,28 @@ function getPublishWindow(
       customWindow.endHour
     )
   ) {
-    return {
-      startHour:
-        Math.min(
-          23,
-          Math.max(
-            0,
-            customWindow.startHour
-          )
-        ),
+    const startHour = Math.min(
+      23,
+      Math.max(
+        0,
+        customWindow.startHour
+      )
+    );
 
+    const endHour = Math.min(
+      23,
+      Math.max(
+        0,
+        customWindow.endHour
+      )
+    );
+
+    return {
+      startHour,
       endHour:
-        Math.min(
-          23,
-          Math.max(
-            0,
-            customWindow.endHour
-          )
-        ),
+        endHour < startHour
+          ? startHour
+          : endHour,
     };
   }
 
@@ -398,54 +322,39 @@ function createScheduleCandidate(
 ) {
   return zonedDateToUTC(
     {
-      year:
-        dateParts.year,
-
-      month:
-        dateParts.month,
-
-      day:
-        dateParts.day,
-
+      year: dateParts.year,
+      month: dateParts.month,
+      day: dateParts.day,
       hour,
-
       minute,
-
       second: 0,
     },
     timezone
   );
 }
 
-function getNextWindowDate(
-  {
-    fromDate,
-    timezone,
+function getNextWindowDate({
+  fromDate,
+  timezone,
+  platform,
+  publishWindow,
+}) {
+  const window = getPublishWindow(
     platform,
-    publishWindow,
-  }
-) {
-  const window =
-    getPublishWindow(
-      platform,
-      publishWindow
-    );
+    publishWindow
+  );
 
-  let current =
-    new Date(
-      fromDate
-    );
+  let current = new Date(fromDate);
 
   for (
     let dayOffset = 0;
     dayOffset < 8;
     dayOffset++
   ) {
-    const parts =
-      getDateParts(
-        current,
-        timezone
-      );
+    const parts = getDateParts(
+      current,
+      timezone
+    );
 
     const startCandidate =
       createScheduleCandidate(
@@ -463,27 +372,21 @@ function getNextWindowDate(
         timezone
       );
 
-    if (
-      current <=
-      startCandidate
-    ) {
+    if (current <= startCandidate) {
       return startCandidate;
     }
 
     if (
-      current >=
-        startCandidate &&
-      current <=
-        endCandidate
+      current >= startCandidate &&
+      current <= endCandidate
     ) {
       return current;
     }
 
-    const next =
-      addDays(
-        parts,
-        1
-      );
+    const next = addDays(
+      parts,
+      1
+    );
 
     const nextCandidate =
       createScheduleCandidate(
@@ -493,35 +396,103 @@ function getNextWindowDate(
         timezone
       );
 
-    if (
-      nextCandidate >
-      current
-    ) {
-      current =
-        nextCandidate;
+    if (nextCandidate > current) {
+      current = nextCandidate;
     } else {
-      current =
-        new Date(
-          current.getTime() +
-            24 *
-              60 *
-              60 *
-              1000
-        );
+      current = new Date(
+        current.getTime() +
+          24 * 60 * 60 * 1000
+      );
     }
   }
 
-  return new Date(
-    current
-  );
+  return new Date(current);
 }
 
-export function getRegionTimezone(
-  region
-) {
-  return resolveTimezone(
-    region
-  );
+function normalizeDate(value) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date;
+}
+
+function normalizeScheduledTime({
+  scheduledFor,
+  platform,
+  region,
+  timezone,
+  publishWindow,
+}) {
+  const requested =
+    normalizeDate(scheduledFor);
+
+  if (!requested) {
+    return calculateNextPublishTime({
+      fromDate: new Date(),
+      platform,
+      region,
+      timezone,
+      publishWindow,
+    });
+  }
+
+  const safeTimezone =
+    resolveTimezone(
+      region,
+      timezone
+    );
+
+  const window =
+    getPublishWindow(
+      platform,
+      publishWindow
+    );
+
+  const local =
+    getLocalTime(
+      requested,
+      safeTimezone
+    );
+
+  if (
+    isHourInsideWindow(
+      local.hour,
+      window
+    )
+  ) {
+    return {
+      success: true,
+      publishAt:
+        requested.toISOString(),
+      platform,
+      region:
+        normalizeRegion(region),
+      timezone:
+        safeTimezone,
+      localTime: local,
+      window,
+      adjusted: false,
+    };
+  }
+
+  return calculateNextPublishTime({
+    fromDate: requested,
+    platform,
+    region,
+    timezone: safeTimezone,
+    publishWindow,
+  });
+}
+
+export function getRegionTimezone(region) {
+  return resolveTimezone(region);
 }
 
 export function getSupportedRegions() {
@@ -540,9 +511,7 @@ export function getDefaultPublishWindow(
   platform
 ) {
   const normalized =
-    normalizePlatform(
-      platform
-    );
+    normalizePlatform(platform);
 
   return {
     ...getPublishWindow(
@@ -561,48 +530,47 @@ export function getLocalTime(
       timezone
     );
 
+  const parsedDate =
+    new Date(date);
+
+  if (
+    Number.isNaN(
+      parsedDate.getTime()
+    )
+  ) {
+    throw new Error(
+      "Invalid date"
+    );
+  }
+
   const parts =
     getDateParts(
-      new Date(date),
+      parsedDate,
       safeTimezone
     );
 
   return {
-    timezone:
-      safeTimezone,
+    timezone: safeTimezone,
 
-    year:
-      parts.year,
+    year: parts.year,
+    month: parts.month,
+    day: parts.day,
 
-    month:
-      parts.month,
+    hour: parts.hour,
+    minute: parts.minute,
+    second: parts.second,
 
-    day:
-      parts.day,
-
-    hour:
-      parts.hour,
-
-    minute:
-      parts.minute,
-
-    second:
-      parts.second,
-
-    weekday:
-      parts.weekday,
+    weekday: parts.weekday,
   };
 }
 
-export function isWithinPublishWindow(
-  {
-    date = new Date(),
-    platform = "website",
-    region = "worldwide",
-    timezone = null,
-    publishWindow = null,
-  } = {}
-) {
+export function isWithinPublishWindow({
+  date = new Date(),
+  platform = "website",
+  region = "worldwide",
+  timezone = null,
+  publishWindow = null,
+} = {}) {
   const normalizedPlatform =
     normalizePlatform(
       platform
@@ -643,15 +611,13 @@ export function isWithinPublishWindow(
   };
 }
 
-export function calculateNextPublishTime(
-  {
-    fromDate = new Date(),
-    platform = "website",
-    region = "worldwide",
-    timezone = null,
-    publishWindow = null,
-  } = {}
-) {
+export function calculateNextPublishTime({
+  fromDate = new Date(),
+  platform = "website",
+  region = "worldwide",
+  timezone = null,
+  publishWindow = null,
+} = {}) {
   const normalizedPlatform =
     normalizePlatform(
       platform
@@ -663,19 +629,24 @@ export function calculateNextPublishTime(
       timezone
     );
 
+  const sourceDate =
+    normalizeDate(
+      fromDate
+    );
+
+  if (!sourceDate) {
+    throw new Error(
+      "Invalid fromDate"
+    );
+  }
+
   const next =
     getNextWindowDate({
-      fromDate:
-        new Date(
-          fromDate
-        ),
-
+      fromDate: sourceDate,
       timezone:
         safeTimezone,
-
       platform:
         normalizedPlatform,
-
       publishWindow,
     });
 
@@ -710,78 +681,49 @@ export function calculateNextPublishTime(
   };
 }
 
-export function createPublishingSchedule(
-  {
-    contentId = null,
-    title = "",
-    platform = "website",
-    region = "worldwide",
-    timezone = null,
-    scheduledFor = null,
-    publishWindow = null,
-    autoPublish = false,
-  } = {}
-) {
+export function createPublishingSchedule({
+  contentId = null,
+  title = "",
+  platform = "website",
+  region = "worldwide",
+  timezone = null,
+  scheduledFor = null,
+  publishWindow = null,
+  autoPublish = false,
+} = {}) {
   const normalizedPlatform =
     normalizePlatform(
       platform
     );
 
+  const normalizedRegion =
+    normalizeRegion(
+      region
+    );
+
   const safeTimezone =
     resolveTimezone(
-      region,
+      normalizedRegion,
       timezone
     );
 
-  const now =
-    new Date();
+  const now = new Date();
 
-  let publishAt;
+  const schedule =
+    normalizeScheduledTime({
+      scheduledFor,
+      platform:
+        normalizedPlatform,
+      region:
+        normalizedRegion,
+      timezone:
+        safeTimezone,
+      publishWindow,
+    });
 
-  if (
-    scheduledFor
-  ) {
-    const requested =
-      new Date(
-        scheduledFor
-      );
-
-    if (
-      Number.isNaN(
-        requested.getTime()
-      )
-    ) {
-      throw new Error(
-        "Invalid scheduledFor date"
-      );
-    }
-
-    publishAt =
-      requested;
-  } else {
-    publishAt =
-      new Date(
-        calculateNextPublishTime({
-          fromDate:
-            now,
-
-          platform:
-            normalizedPlatform,
-
-          region,
-
-          timezone:
-            safeTimezone,
-
-          publishWindow,
-        }).publishAt
-      );
-  }
-
-  const local =
-    getLocalTime(
-      publishAt,
-      safeTimezone
+  const publishAt =
+    new Date(
+      schedule.publishAt
     );
 
   return {
@@ -799,9 +741,7 @@ export function createPublishingSchedule(
       normalizedPlatform,
 
     region:
-      normalizeRegion(
-        region
-      ),
+      normalizedRegion,
 
     timezone:
       safeTimezone,
@@ -810,7 +750,10 @@ export function createPublishingSchedule(
       publishAt.toISOString(),
 
     localScheduledFor:
-      local,
+      getLocalTime(
+        publishAt,
+        safeTimezone
+      ),
 
     autoPublish:
       Boolean(
@@ -818,25 +761,30 @@ export function createPublishingSchedule(
       ),
 
     status:
-      "scheduled",
+      autoPublish
+        ? "scheduled"
+        : "ceo_approval",
+
+    scheduleAdjusted:
+      Boolean(
+        schedule.adjusted
+      ),
 
     createdAt:
       now.toISOString(),
   };
 }
 
-export function getRegionalPublishingPlan(
-  {
-    platform = "website",
-    regions = [
-      "uk",
-      "usa",
-      "europe",
-      "middle east",
-    ],
-    fromDate = new Date(),
-  } = {}
-) {
+export function getRegionalPublishingPlan({
+  platform = "website",
+  regions = [
+    "uk",
+    "usa",
+    "europe",
+    "middle east",
+  ],
+  fromDate = new Date(),
+} = {}) {
   const normalizedPlatform =
     normalizePlatform(
       platform
@@ -845,9 +793,7 @@ export function getRegionalPublishingPlan(
   const uniqueRegions =
     Array.from(
       new Set(
-        Array.isArray(
-          regions
-        )
+        Array.isArray(regions)
           ? regions
               .map(
                 (region) =>
@@ -905,10 +851,7 @@ export function getSchedulerStatus() {
         Object.entries(
           DEFAULT_PUBLISH_WINDOWS
         ).map(
-          ([
-            platform,
-            window,
-          ]) => [
+          ([platform, window]) => [
             platform,
             {
               ...window,
