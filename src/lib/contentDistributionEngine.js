@@ -963,7 +963,10 @@ export async function getDistribution(
   await ensureContentDistributionTable(db);
 
   const safeLimit = Math.min(
-    Math.max(Number(limit) || 100, 1),
+    Math.max(
+      Number(limit) || 100,
+      1
+    ),
     500
   );
 
@@ -1020,16 +1023,13 @@ export async function getDistribution(
     `
     SELECT *
     FROM content_distribution
-
     ${where}
-
     ORDER BY
       COALESCE(
         scheduled_at,
         created_at
       ) ASC,
       id DESC
-
     LIMIT $${values.length}
     `,
     values
@@ -1056,9 +1056,7 @@ export async function getDistributionById(
     );
   }
 
-  const distributionId = Number(id);
-
-  if (!validDistributionId(distributionId)) {
+  if (!validDistributionId(id)) {
     throw new Error(
       "Valid distribution ID is required"
     );
@@ -1073,12 +1071,12 @@ export async function getDistributionById(
     WHERE id = $1
     LIMIT 1
     `,
-    [distributionId]
+    [Number(id)]
   );
 
   if (result.rows.length === 0) {
     throw new Error(
-      `Distribution job not found: ${distributionId}`
+      `Distribution job not found: ${id}`
     );
   }
 
@@ -1096,7 +1094,7 @@ export async function updateDistributionStatus(
   db,
   id,
   status,
-  details = {}
+  options = {}
 ) {
   if (!db) {
     throw new Error(
@@ -1104,70 +1102,59 @@ export async function updateDistributionStatus(
     );
   }
 
-  const distributionId = Number(id);
-
-  if (!validDistributionId(distributionId)) {
+  if (!validDistributionId(id)) {
     throw new Error(
       "Valid distribution ID is required"
     );
   }
 
+  await ensureContentDistributionTable(db);
+
   const normalizedStatus =
     normalizeStatus(status);
 
-  await ensureContentDistributionTable(db);
+  const scheduledAt =
+    normalizeDate(
+      options.scheduledAt
+    );
+
+  const publishedAt =
+    normalizeDate(
+      options.publishedAt
+    );
 
   const errorMessage =
     safeText(
-      details.errorMessage ||
-        details.error ||
+      options.errorMessage ||
+        options.error ||
         "",
       5000
     ) || null;
 
+  const providerName =
+    safeText(
+      options.providerName || "",
+      200
+    ) || null;
+
   const externalId =
     safeText(
-      details.providerPostId ||
-        details.externalId ||
+      options.externalId ||
+        options.providerPostId ||
         "",
       500
     ) || null;
 
   const externalUrl =
     safeText(
-      details.externalUrl ||
-        "",
+      options.externalUrl || "",
       2000
     ) || null;
 
-  const providerName =
-    safeText(
-      details.providerName ||
-        "",
-      200
-    ) || null;
-
-  const scheduledAt =
-    normalizeDate(
-      details.scheduledAt
-    );
-
-  const publishedAt =
-    normalizeDate(
-      details.publishedAt
-    );
-
   const publishingResult =
     normalizeJSON(
-      details.publishingResult ||
-        details.publishing,
-      null
-    );
-
-  const safetyResult =
-    normalizeJSON(
-      details.safetyResult ||
-        details.safety,
+      options.publishingResult ||
+        options.publishing,
       null
     );
 
@@ -1175,76 +1162,91 @@ export async function updateDistributionStatus(
     `
     UPDATE content_distribution
     SET
-      status = $2,
-      provider_name =
-        COALESCE($3, provider_name),
-      external_id =
-        COALESCE($4, external_id),
-      external_url =
-        COALESCE($5, external_url),
+      status = $1,
+
       scheduled_at =
-        COALESCE($6, scheduled_at),
+        COALESCE(
+          $2,
+          scheduled_at
+        ),
+
       published_at =
-        COALESCE($7, published_at),
-      error = $8,
+        COALESCE(
+          $3,
+          published_at
+        ),
+
+      provider_name =
+        COALESCE(
+          $4,
+          provider_name
+        ),
+
+      external_id =
+        COALESCE(
+          $5,
+          external_id
+        ),
+
+      external_url =
+        COALESCE(
+          $6,
+          external_url
+        ),
+
+      error = $7,
+
       publishing_result =
         COALESCE(
-          $9::jsonb,
+          $8::jsonb,
           publishing_result
         ),
-      safety_result =
-        COALESCE(
-          $10::jsonb,
-          safety_result
-        ),
+
       attempts =
         CASE
-          WHEN $2 IN (
-            'published',
-            'failed'
-          )
+          WHEN $1 = 'failed'
           THEN attempts + 1
           ELSE attempts
         END,
+
       last_attempt_at =
         CASE
-          WHEN $2 IN (
+          WHEN $1 IN (
+            'failed',
             'published',
-            'failed'
+            'scheduled'
           )
           THEN CURRENT_TIMESTAMP
           ELSE last_attempt_at
         END,
+
       updated_at =
         CURRENT_TIMESTAMP
-    WHERE id = $1
+
+    WHERE id = $9
+
     RETURNING *
     `,
     [
-      distributionId,
       normalizedStatus,
+      scheduledAt,
+      publishedAt,
       providerName,
       externalId,
       externalUrl,
-      scheduledAt,
-      publishedAt,
       errorMessage,
       publishingResult
         ? JSON.stringify(
             publishingResult
           )
         : null,
-      safetyResult
-        ? JSON.stringify(
-            safetyResult
-          )
-        : null,
+      Number(id),
     ]
   );
 
   if (result.rows.length === 0) {
     throw new Error(
-      `Distribution job not found: ${distributionId}`
+      `Distribution job not found: ${id}`
     );
   }
 
@@ -1255,30 +1257,78 @@ export async function updateDistributionStatus(
 }
 
 /* =========================
+   MARK READY
+========================= */
+
+export async function markDistributionReady(
+  db,
+  id,
+  options = {}
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.READY,
+    options
+  );
+}
+
+/* =========================
+   MARK APPROVED
+========================= */
+
+export async function approveDistribution(
+  db,
+  id,
+  options = {}
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.APPROVED,
+    options
+  );
+}
+
+/* =========================
+   MARK SCHEDULED
+========================= */
+
+export async function markDistributionScheduled(
+  db,
+  id,
+  scheduledAt,
+  options = {}
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.SCHEDULED,
+    {
+      ...options,
+      scheduledAt,
+    }
+  );
+}
+
+/* =========================
    MARK PUBLISHED
 ========================= */
 
 export async function markDistributionPublished(
   db,
   id,
-  publishingResult = {}
+  options = {}
 ) {
   return updateDistributionStatus(
     db,
     id,
     DISTRIBUTION_STATUS.PUBLISHED,
     {
-      publishingResult,
+      ...options,
       publishedAt:
-        publishingResult?.publishedAt ||
+        options.publishedAt ||
         new Date(),
-      providerName:
-        publishingResult?.providerName,
-      providerPostId:
-        publishingResult?.providerPostId ||
-        publishingResult?.externalId,
-      externalUrl:
-        publishingResult?.externalUrl,
     }
   );
 }
@@ -1290,37 +1340,550 @@ export async function markDistributionPublished(
 export async function markDistributionFailed(
   db,
   id,
-  error
+  error,
+  options = {}
 ) {
   return updateDistributionStatus(
     db,
     id,
     DISTRIBUTION_STATUS.FAILED,
     {
+      ...options,
       errorMessage:
-        error?.message ||
-        String(error || "Distribution failed"),
+        error ||
+        options.errorMessage ||
+        "Distribution failed",
     }
   );
 }
 
 /* =========================
-   MARK SCHEDULED
+   BLOCK DISTRIBUTION
 ========================= */
 
-export async function markDistributionScheduled(
+export async function blockDistribution(
   db,
   id,
-  scheduleData = {}
+  reason = "Distribution blocked",
+  options = {}
 ) {
   return updateDistributionStatus(
     db,
     id,
-    DISTRIBUTION_STATUS.SCHEDULED,
+    DISTRIBUTION_STATUS.BLOCKED,
     {
-      scheduledAt:
-        scheduleData?.scheduledAt ||
-        scheduleData?.nextPublishAt,
-      publishingResult:
-        scheduleData,
-   
+      ...options,
+      errorMessage: reason,
+    }
+  );
+}
+
+/* =========================
+   HOLD DISTRIBUTION
+========================= */
+
+export async function holdDistribution(
+  db,
+  id,
+  reason = "Distribution placed on hold",
+  options = {}
+) {
+  return updateDistributionStatus(
+    db,
+    id,
+    DISTRIBUTION_STATUS.HOLD,
+    {
+      ...options,
+      errorMessage: reason,
+    }
+  );
+}
+
+/* =========================
+   DELETE DISTRIBUTION JOB
+========================= */
+
+export async function deleteDistributionJob(
+  db,
+  id
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  if (!validDistributionId(id)) {
+    throw new Error(
+      "Valid distribution ID is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const result = await db.query(
+    `
+    DELETE FROM content_distribution
+    WHERE id = $1
+    RETURNING *
+    `,
+    [Number(id)]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error(
+      `Distribution job not found: ${id}`
+    );
+  }
+
+  return {
+    success: true,
+    deleted: result.rows[0],
+  };
+}
+
+/* =========================
+   GET DISTRIBUTION STATS
+========================= */
+
+export async function getDistributionStats(
+  db,
+  {
+    articleId = null,
+    region = null,
+  } = {}
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const conditions = [];
+  const values = [];
+
+  if (validArticleId(articleId)) {
+    values.push(Number(articleId));
+
+    conditions.push(
+      `article_id = $${values.length}`
+    );
+  }
+
+  if (region) {
+    values.push(
+      normalizeRegion(region)
+    );
+
+    conditions.push(
+      `region = $${values.length}`
+    );
+  }
+
+  const where =
+    conditions.length > 0
+      ? `WHERE ${conditions.join(" AND ")}`
+      : "";
+
+  const result = await db.query(
+    `
+    SELECT
+      COUNT(*)::INTEGER AS total,
+
+      COUNT(*) FILTER (
+        WHERE status = 'pending'
+      )::INTEGER AS pending,
+
+      COUNT(*) FILTER (
+        WHERE status = 'approved'
+      )::INTEGER AS approved,
+
+      COUNT(*) FILTER (
+        WHERE status = 'ready'
+      )::INTEGER AS ready,
+
+      COUNT(*) FILTER (
+        WHERE status = 'scheduled'
+      )::INTEGER AS scheduled,
+
+      COUNT(*) FILTER (
+        WHERE status = 'published'
+      )::INTEGER AS published,
+
+      COUNT(*) FILTER (
+        WHERE status = 'failed'
+      )::INTEGER AS failed,
+
+      COUNT(*) FILTER (
+        WHERE status = 'blocked'
+      )::INTEGER AS blocked,
+
+      COUNT(*) FILTER (
+        WHERE status = 'hold'
+      )::INTEGER AS hold
+
+    FROM content_distribution
+    ${where}
+    `,
+    values
+  );
+
+  const platformResult =
+    await db.query(
+      `
+      SELECT
+        platform,
+        COUNT(*)::INTEGER AS count
+      FROM content_distribution
+      ${where}
+      GROUP BY platform
+      ORDER BY platform ASC
+      `,
+      values
+    );
+
+  const regionResult =
+    await db.query(
+      `
+      SELECT
+        region,
+        COUNT(*)::INTEGER AS count
+      FROM content_distribution
+      ${where}
+      GROUP BY region
+      ORDER BY region ASC
+      `,
+      values
+    );
+
+  return {
+    success: true,
+    filters: {
+      articleId: validArticleId(articleId)
+        ? Number(articleId)
+        : null,
+      region: region
+        ? normalizeRegion(region)
+        : null,
+    },
+    stats:
+      result.rows[0] || {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        ready: 0,
+        scheduled: 0,
+        published: 0,
+        failed: 0,
+        blocked: 0,
+        hold: 0,
+      },
+    byPlatform:
+      platformResult.rows,
+    byRegion:
+      regionResult.rows,
+  };
+}
+
+/* =========================
+   GET SCHEDULED DISTRIBUTION
+========================= */
+
+export async function getScheduledDistribution(
+  db,
+  {
+    platform = null,
+    region = null,
+    limit = 100,
+  } = {}
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const safeLimit = Math.min(
+    Math.max(
+      Number(limit) || 100,
+      1
+    ),
+    500
+  );
+
+  const conditions = [
+    `status = 'scheduled'`,
+    `scheduled_at IS NOT NULL`,
+  ];
+
+  const values = [];
+
+  const normalizedPlatform =
+    safePlatform(platform);
+
+  if (normalizedPlatform) {
+    values.push(normalizedPlatform);
+
+    conditions.push(
+      `platform = $${values.length}`
+    );
+  }
+
+  if (region) {
+    values.push(
+      normalizeRegion(region)
+    );
+
+    conditions.push(
+      `region = $${values.length}`
+    );
+  }
+
+  values.push(safeLimit);
+
+  const result = await db.query(
+    `
+    SELECT *
+    FROM content_distribution
+    WHERE ${conditions.join(" AND ")}
+    ORDER BY scheduled_at ASC
+    LIMIT $${values.length}
+    `,
+    values
+  );
+
+  return {
+    success: true,
+    count: result.rows.length,
+    items: result.rows,
+  };
+}
+
+/* =========================
+   GET DUE DISTRIBUTION
+========================= */
+
+export async function getDueDistribution(
+  db,
+  {
+    platform = null,
+    region = null,
+    limit = 100,
+  } = {}
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const safeLimit = Math.min(
+    Math.max(
+      Number(limit) || 100,
+      1
+    ),
+    500
+  );
+
+  const conditions = [
+    `status = 'scheduled'`,
+    `scheduled_at IS NOT NULL`,
+    `scheduled_at <= CURRENT_TIMESTAMP`,
+  ];
+
+  const values = [];
+
+  const normalizedPlatform =
+    safePlatform(platform);
+
+  if (normalizedPlatform) {
+    values.push(normalizedPlatform);
+
+    conditions.push(
+      `platform = $${values.length}`
+    );
+  }
+
+  if (region) {
+    values.push(
+      normalizeRegion(region)
+    );
+
+    conditions.push(
+      `region = $${values.length}`
+    );
+  }
+
+  values.push(safeLimit);
+
+  const result = await db.query(
+    `
+    SELECT *
+    FROM content_distribution
+    WHERE ${conditions.join(" AND ")}
+    ORDER BY scheduled_at ASC
+    LIMIT $${values.length}
+    `,
+    values
+  );
+
+  return {
+    success: true,
+    count: result.rows.length,
+    items: result.rows,
+  };
+}
+
+/* =========================
+   RETRY FAILED JOB
+========================= */
+
+export async function retryDistributionJob(
+  db,
+  id
+) {
+  if (!db) {
+    throw new Error(
+      "Database connection is required"
+    );
+  }
+
+  if (!validDistributionId(id)) {
+    throw new Error(
+      "Valid distribution ID is required"
+    );
+  }
+
+  await ensureContentDistributionTable(db);
+
+  const result = await db.query(
+    `
+    UPDATE content_distribution
+    SET
+      status = 'pending',
+      error = NULL,
+      updated_at = CURRENT_TIMESTAMP
+    WHERE id = $1
+    RETURNING *
+    `,
+    [Number(id)]
+  );
+
+  if (result.rows.length === 0) {
+    throw new Error(
+      `Distribution job not found: ${id}`
+    );
+  }
+
+  return {
+    success: true,
+    retried: true,
+    item: result.rows[0],
+  };
+}
+
+/* =========================
+   DISTRIBUTION ENGINE STATUS
+========================= */
+
+export async function getContentDistributionEngineStatus(
+  db
+) {
+  if (!db) {
+    return {
+      success: false,
+      engine: "contentDistributionEngine",
+      databaseRequired: true,
+      databaseConnected: false,
+    };
+  }
+
+  try {
+    await ensureContentDistributionTable(db);
+
+    const result = await db.query(`
+      SELECT
+        COUNT(*)::INTEGER AS total_jobs,
+
+        COUNT(*) FILTER (
+          WHERE status = 'scheduled'
+        )::INTEGER AS scheduled_jobs,
+
+        COUNT(*) FILTER (
+          WHERE status = 'published'
+        )::INTEGER AS published_jobs,
+
+        COUNT(*) FILTER (
+          WHERE status = 'failed'
+        )::INTEGER AS failed_jobs,
+
+        COUNT(*) FILTER (
+          WHERE status = 'blocked'
+        )::INTEGER AS blocked_jobs,
+
+        COUNT(*) FILTER (
+          WHERE status = 'hold'
+        )::INTEGER AS hold_jobs
+
+      FROM content_distribution
+    `);
+
+    return {
+      success: true,
+      engine: "contentDistributionEngine",
+      databaseConnected: true,
+      multiPlatform: true,
+      regionalDistribution: true,
+      duplicateProtection: true,
+      legalProtection: true,
+      copyrightProtection: true,
+      takedownProtection: true,
+      schedulingSupport: true,
+      retrySupport: true,
+      externalPublishing: false,
+      stats:
+        result.rows[0] || {
+          total_jobs: 0,
+          scheduled_jobs: 0,
+          published_jobs: 0,
+          failed_jobs: 0,
+          blocked_jobs: 0,
+          hold_jobs: 0,
+        },
+      supportedPlatforms:
+        Object.values(PLATFORMS),
+      supportedStatuses:
+        Object.values(DISTRIBUTION_STATUS),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      engine: "contentDistributionEngine",
+      databaseConnected: false,
+      error:
+        error?.message ||
+        "Unable to read distribution engine status",
+    };
+  }
+}
+
+/* =========================
+   EXPORTS
+========================= */
+
+export {
+  PLATFORMS,
+  DISTRIBUTION_STATUS,
+  DEFAULT_PLATFORMS,
+  evaluateDistributionSafety,
+  normalizeQueueItem,
+  normalizeRegion,
+  normalizeRiskLevel,
+  safePlatform,
+};
