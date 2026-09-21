@@ -14,6 +14,7 @@ const SENSITIVE_CATEGORIES = new Set([
   "politics",
   "political",
   "elections",
+  "election",
   "war",
   "conflict",
   "crime",
@@ -73,19 +74,44 @@ const MEDIUM_RISK_KEYWORDS = [
   "hospital",
 ];
 
-function safeText(value, maxLength = 2000) {
+const UNVERIFIED_INDICATORS = [
+  "unconfirmed",
+  "unverified",
+  "allegedly",
+  "rumor",
+  "rumour",
+  "reportedly",
+  "claims that",
+  "it is unclear",
+  "not independently verified",
+];
+
+function safeText(
+  value,
+  maxLength = 2000
+) {
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
 }
 
-function normalizeCategory(value) {
-  return safeText(value, 100).toLowerCase();
+function normalizeCategory(
+  value
+) {
+  return safeText(
+    value,
+    100
+  ).toLowerCase();
 }
 
-function normalizeRisk(value) {
-  const risk = safeText(value, 50).toLowerCase();
+function normalizeRisk(
+  value
+) {
+  const risk = safeText(
+    value,
+    50
+  ).toLowerCase();
 
   if (
     risk === RISK_LEVELS.HIGH ||
@@ -98,124 +124,231 @@ function normalizeRisk(value) {
   return null;
 }
 
-function containsKeyword(text, keywords) {
-  const normalized = text.toLowerCase();
+function normalizeForMatching(
+  value
+) {
+  return safeText(
+    value,
+    12000
+  )
+    .toLowerCase()
+    .replace(/[“”‘’]/g, "'")
+    .replace(/[^a-z0-9\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  return keywords.some((keyword) =>
-    normalized.includes(keyword.toLowerCase())
+function containsKeyword(
+  text,
+  keywords
+) {
+  const normalized =
+    normalizeForMatching(
+      text
+    );
+
+  if (!normalized) {
+    return false;
+  }
+
+  return keywords.some(
+    (keyword) => {
+      const normalizedKeyword =
+        normalizeForMatching(
+          keyword
+        );
+
+      if (!normalizedKeyword) {
+        return false;
+      }
+
+      const escaped =
+        normalizedKeyword.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+
+      const pattern =
+        new RegExp(
+          `(?:^|\\s)${escaped}(?:$|\\s)`,
+          "i"
+        );
+
+      return pattern.test(
+        normalized
+      );
+    }
   );
 }
 
-function hasLegalHold(article) {
-  return article?.legal_hold === true;
+function hasLegalHold(
+  article
+) {
+  return (
+    article?.legal_hold === true ||
+    article?.legal_hold === "true" ||
+    article?.legal_hold === 1
+  );
 }
 
-function requiresLegalReview(article) {
-  return article?.legal_review_required === true;
+function requiresLegalReview(
+  article
+) {
+  return (
+    article?.legal_review_required === true ||
+    article?.legal_review_required === "true" ||
+    article?.legal_review_required === 1
+  );
 }
 
-function hasTakedownIssue(article) {
-  const status = safeText(
-    article?.takedown_status,
-    100
-  ).toLowerCase();
+function hasTakedownIssue(
+  article
+) {
+  const status =
+    safeText(
+      article?.takedown_status,
+      100
+    ).toLowerCase();
 
   return (
     status !== "" &&
     status !== "none" &&
     status !== "cleared" &&
-    status !== "rejected"
+    status !== "rejected" &&
+    status !== "resolved"
   );
 }
 
-function hasCopyrightRisk(article) {
-  const status = safeText(
-    article?.copyright_status,
-    100
-  ).toLowerCase();
+function hasCopyrightRisk(
+  article
+) {
+  const status =
+    safeText(
+      article?.copyright_status,
+      100
+    ).toLowerCase();
 
-  const risk = safeText(
-    article?.copyright_risk,
-    100
-  ).toLowerCase();
+  const risk =
+    safeText(
+      article?.copyright_risk,
+      100
+    ).toLowerCase();
 
   return (
     risk === "high" ||
+    risk === "critical" ||
     status === "blocked" ||
     status === "high_risk" ||
-    status === "takedown"
+    status === "takedown" ||
+    status === "held"
   );
 }
 
-function hasWeakSource(article) {
-  const source = safeText(
-    article?.source,
-    200
-  );
+function hasWeakSource(
+  article
+) {
+  const source =
+    safeText(
+      article?.source,
+      200
+    );
 
-  const link = safeText(
-    article?.link,
-    1000
-  );
+  const link =
+    safeText(
+      article?.link,
+      1000
+    );
 
-  return !source || !link;
+  return (
+    !source ||
+    !link
+  );
 }
 
-function hasUnverifiedClaimRisk(article) {
+function hasUnverifiedClaimRisk(
+  article
+) {
   const text = [
     article?.title,
     article?.description,
     article?.content,
     article?.ai_summary,
   ]
-    .map((value) => safeText(value, 4000))
+    .map(
+      (value) =>
+        safeText(
+          value,
+          4000
+        )
+    )
     .join(" ");
 
-  const indicators = [
-    "unconfirmed",
-    "unverified",
-    "allegedly",
-    "rumor",
-    "rumour",
-    "reportedly",
-    "claims that",
-    "it is unclear",
-    "not independently verified",
-  ];
+  return containsKeyword(
+    text,
+    UNVERIFIED_INDICATORS
+  );
+}
 
-  return containsKeyword(text, indicators);
+function getArticleText(
+  article
+) {
+  return [
+    article?.title,
+    article?.description,
+    article?.content,
+    article?.ai_summary,
+  ]
+    .map(
+      (value) =>
+        safeText(
+          value,
+          5000
+        )
+    )
+    .filter(Boolean)
+    .join(" ");
 }
 
 /* =========================
    SCORE CALCULATION
 ========================= */
 
-export function calculateContentRisk(article = {}) {
-  const category = normalizeCategory(
-    article.ai_category ||
-      article.category
-  );
+export function calculateContentRisk(
+  article = {}
+) {
+  const category =
+    normalizeCategory(
+      article.ai_category ||
+        article.category
+    );
 
-  const text = [
-    article.title,
-    article.description,
-    article.content,
-    article.ai_summary,
-  ]
-    .map((value) =>
-      safeText(value, 5000)
-    )
-    .join(" ");
+  const text =
+    getArticleText(
+      article
+    );
 
   let score = 0;
+
   const reasons = [];
+
+  const highRiskDetected =
+    containsKeyword(
+      text,
+      HIGH_RISK_KEYWORDS
+    );
+
+  const mediumRiskDetected =
+    containsKeyword(
+      text,
+      MEDIUM_RISK_KEYWORDS
+    );
 
   if (
     SENSITIVE_CATEGORIES.has(
       category
     )
   ) {
-    score += 30;
+    score += 20;
 
     reasons.push(
       `Sensitive category: ${category}`
@@ -223,10 +356,7 @@ export function calculateContentRisk(article = {}) {
   }
 
   if (
-    containsKeyword(
-      text,
-      HIGH_RISK_KEYWORDS
-    )
+    highRiskDetected
   ) {
     score += 50;
 
@@ -235,13 +365,16 @@ export function calculateContentRisk(article = {}) {
     );
   }
 
+  /*
+   * Medium indicators are useful for
+   * routing sensitive stories to CEO
+   * review, but should not automatically
+   * make every article high risk.
+   */
   if (
-    containsKeyword(
-      text,
-      MEDIUM_RISK_KEYWORDS
-    )
+    mediumRiskDetected
   ) {
-    score += 25;
+    score += 20;
 
     reasons.push(
       "Sensitive subject indicator detected"
@@ -253,7 +386,7 @@ export function calculateContentRisk(article = {}) {
       article
     )
   ) {
-    score += 30;
+    score += 25;
 
     reasons.push(
       "Unverified or uncertain claim indicator detected"
@@ -261,9 +394,11 @@ export function calculateContentRisk(article = {}) {
   }
 
   if (
-    hasWeakSource(article)
+    hasWeakSource(
+      article
+    )
   ) {
-    score += 20;
+    score += 15;
 
     reasons.push(
       "Source or source link is incomplete"
@@ -271,7 +406,9 @@ export function calculateContentRisk(article = {}) {
   }
 
   if (
-    hasCopyrightRisk(article)
+    hasCopyrightRisk(
+      article
+    )
   ) {
     score += 50;
 
@@ -281,7 +418,9 @@ export function calculateContentRisk(article = {}) {
   }
 
   if (
-    requiresLegalReview(article)
+    requiresLegalReview(
+      article
+    )
   ) {
     score += 50;
 
@@ -291,7 +430,9 @@ export function calculateContentRisk(article = {}) {
   }
 
   if (
-    hasTakedownIssue(article)
+    hasTakedownIssue(
+      article
+    )
   ) {
     score += 100;
 
@@ -301,7 +442,9 @@ export function calculateContentRisk(article = {}) {
   }
 
   if (
-    hasLegalHold(article)
+    hasLegalHold(
+      article
+    )
   ) {
     score += 100;
 
@@ -310,23 +453,42 @@ export function calculateContentRisk(article = {}) {
     );
   }
 
-  let risk = RISK_LEVELS.LOW;
+  score =
+    Math.min(
+      score,
+      100
+    );
 
-  if (score >= 70) {
-    risk = RISK_LEVELS.HIGH;
-  } else if (score >= 30) {
-    risk = RISK_LEVELS.MEDIUM;
+  let risk =
+    RISK_LEVELS.LOW;
+
+  if (
+    score >= 70
+  ) {
+    risk =
+      RISK_LEVELS.HIGH;
+  } else if (
+    score >= 20
+  ) {
+    risk =
+      RISK_LEVELS.MEDIUM;
   }
 
   let action =
     RISK_ACTIONS.AUTO_PUBLISH;
 
-  if (risk === RISK_LEVELS.MEDIUM) {
+  if (
+    risk ===
+    RISK_LEVELS.MEDIUM
+  ) {
     action =
       RISK_ACTIONS.CEO_APPROVAL;
   }
 
-  if (risk === RISK_LEVELS.HIGH) {
+  if (
+    risk ===
+    RISK_LEVELS.HIGH
+  ) {
     action =
       RISK_ACTIONS.HOLD;
   }
@@ -334,8 +496,12 @@ export function calculateContentRisk(article = {}) {
   return {
     risk,
     action,
-    score: Math.min(score, 100),
-    reasons: reasons.slice(0, 20),
+    score,
+    reasons:
+      reasons.slice(
+        0,
+        20
+      ),
   };
 }
 
@@ -351,19 +517,41 @@ export function evaluatePublicationRisk(
       article
     );
 
+  /*
+   * Legal, copyright and takedown
+   * protection always has priority.
+   */
   if (
-    hasLegalHold(article) ||
-    hasTakedownIssue(article) ||
-    requiresLegalReview(article) ||
-    hasCopyrightRisk(article)
+    hasLegalHold(
+      article
+    ) ||
+    hasTakedownIssue(
+      article
+    ) ||
+    requiresLegalReview(
+      article
+    ) ||
+    hasCopyrightRisk(
+      article
+    )
   ) {
     return {
       ...result,
-      risk: RISK_LEVELS.HIGH,
-      action: RISK_ACTIONS.HOLD,
-      publishAllowed: false,
-      requiresApproval: false,
-      legalBlock: true,
+
+      risk:
+        RISK_LEVELS.HIGH,
+
+      action:
+        RISK_ACTIONS.HOLD,
+
+      publishAllowed:
+        false,
+
+      requiresApproval:
+        false,
+
+      legalBlock:
+        true,
     };
   }
 
@@ -373,9 +561,15 @@ export function evaluatePublicationRisk(
   ) {
     return {
       ...result,
-      publishAllowed: false,
-      requiresApproval: false,
-      legalBlock: false,
+
+      publishAllowed:
+        false,
+
+      requiresApproval:
+        false,
+
+      legalBlock:
+        false,
     };
   }
 
@@ -385,17 +579,29 @@ export function evaluatePublicationRisk(
   ) {
     return {
       ...result,
-      publishAllowed: false,
-      requiresApproval: true,
-      legalBlock: false,
+
+      publishAllowed:
+        false,
+
+      requiresApproval:
+        true,
+
+      legalBlock:
+        false,
     };
   }
 
   return {
     ...result,
-    publishAllowed: true,
-    requiresApproval: false,
-    legalBlock: false,
+
+    publishAllowed:
+      true,
+
+    requiresApproval:
+      false,
+
+    legalBlock:
+      false,
   };
 }
 
@@ -413,7 +619,10 @@ export async function applyContentRisk(
     );
   }
 
-  const id = Number(articleId);
+  const id =
+    Number(
+      articleId
+    );
 
   if (
     !Number.isInteger(id) ||
@@ -464,8 +673,11 @@ export async function applyContentRisk(
     );
 
   return {
-    articleId: id,
+    articleId:
+      id,
+
     ...decision,
+
     evaluatedAt:
       new Date().toISOString(),
   };
@@ -477,7 +689,8 @@ export async function applyContentRisk(
 
 export function getContentRiskEngineStatus() {
   return {
-    enabled: true,
+    enabled:
+      true,
 
     engine:
       "ZEESHAN NEWS AI Content Risk Engine",
@@ -516,6 +729,9 @@ export function getContentRiskEngineStatus() {
       true,
 
     unverifiedClaimProtection:
+      true,
+
+    exactKeywordMatching:
       true,
 
     fakeTraffic:
