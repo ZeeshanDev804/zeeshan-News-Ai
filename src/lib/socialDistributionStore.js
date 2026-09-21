@@ -1,5 +1,4 @@
-const DEFAULT_STATUS =
-  "draft";
+const DEFAULT_STATUS = "draft";
 
 const VALID_STATUSES = [
   "draft",
@@ -13,15 +12,10 @@ const VALID_STATUSES = [
   "cancelled",
 ];
 
+const DEFAULT_REGION = "Worldwide";
 
-function normalizeText(
-  value,
-  maxLength = 5000
-) {
-  if (
-    value === undefined ||
-    value === null
-  ) {
+function normalizeText(value, maxLength = 5000) {
+  if (value === undefined || value === null) {
     return "";
   }
 
@@ -30,47 +24,76 @@ function normalizeText(
     .slice(0, maxLength);
 }
 
+function normalizeStatus(status) {
+  const value = String(status || DEFAULT_STATUS)
+    .trim()
+    .toLowerCase();
 
-function normalizeStatus(
-  status
-) {
-  const value =
-    String(
-      status ||
-        DEFAULT_STATUS
-    )
-      .trim()
-      .toLowerCase();
-
-  if (
-    VALID_STATUSES.includes(
-      value
-    )
-  ) {
+  if (VALID_STATUSES.includes(value)) {
     return value;
   }
 
   return DEFAULT_STATUS;
 }
 
-
-function normalizePlatform(
-  platform
-) {
-  return normalizeText(
-    platform,
-    50
-  ).toLowerCase();
+function normalizePlatform(platform) {
+  return normalizeText(platform, 50).toLowerCase();
 }
 
+function normalizeRegion(region) {
+  return normalizeText(region, 200) || DEFAULT_REGION;
+}
 
-async function ensureSocialDistributionTable(
-  db
-) {
+function normalizeArticleId(articleId) {
+  if (
+    articleId === undefined ||
+    articleId === null ||
+    String(articleId).trim() === ""
+  ) {
+    return null;
+  }
+
+  const numericId = Number(articleId);
+
+  if (!Number.isInteger(numericId) || numericId <= 0) {
+    return null;
+  }
+
+  return numericId;
+}
+
+function normalizeJSON(value, fallback = {}) {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  try {
+    const parsed = JSON.parse(String(value));
+
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeHashtags(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => normalizeText(item, 100))
+    .filter(Boolean)
+    .slice(0, 50);
+}
+
+async function ensureSocialDistributionTable(db) {
   if (!db) {
-    throw new Error(
-      "Database connection is required"
-    );
+    throw new Error("Database connection is required");
   }
 
   await db.query(`
@@ -140,6 +163,10 @@ async function ensureSocialDistributionTable(
       ON social_distribution_queue(article_id);
 
     CREATE INDEX IF NOT EXISTS
+      idx_social_distribution_region
+      ON social_distribution_queue(region);
+
+    CREATE INDEX IF NOT EXISTS
       idx_social_distribution_scheduled
       ON social_distribution_queue(scheduled_at);
 
@@ -148,16 +175,51 @@ async function ensureSocialDistributionTable(
       ON social_distribution_queue(created_at DESC);
   `);
 
+  /*
+   * Compatibility migrations.
+   * Existing installations may already have this table.
+   */
+  await db.query(`
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'Worldwide';
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS safety_result JSONB DEFAULT '{}'::jsonb;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS publishing_result JSONB DEFAULT '{}'::jsonb;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS provider_name TEXT;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS provider_post_id TEXT;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMP;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS published_at TIMESTAMP;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS error_message TEXT;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+    ALTER TABLE social_distribution_queue
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+  `);
+
   return true;
 }
-
 
 export async function saveSocialDistributionPackage(
   db,
   {
     articleId = null,
     platform,
-    region = "Worldwide",
+    region = DEFAULT_REGION,
     status = DEFAULT_STATUS,
     content = {},
     safety = {},
@@ -168,181 +230,190 @@ export async function saveSocialDistributionPackage(
     errorMessage = null,
   } = {}
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
-  const normalizedPlatform =
-    normalizePlatform(
-      platform
-    );
+  const normalizedPlatform = normalizePlatform(platform);
 
-  if (
-    !normalizedPlatform
-  ) {
-    throw new Error(
-      "Platform is required"
-    );
+  if (!normalizedPlatform) {
+    throw new Error("Platform is required");
   }
 
+  const normalizedArticleId =
+    normalizeArticleId(articleId);
+
+  const normalizedRegion =
+    normalizeRegion(region);
+
   const normalizedStatus =
-    normalizeStatus(
-      status
+    normalizeStatus(status);
+
+  const normalizedContent =
+    content && typeof content === "object"
+      ? content
+      : {};
+
+  const normalizedSafety =
+    normalizeJSON(safety, {});
+
+  const normalizedPublishing =
+    normalizeJSON(publishing, {});
+
+  const normalizedHashtags =
+    normalizeHashtags(
+      normalizedContent.hashtags
     );
 
-  const result =
-    await db.query(
-      `
-      INSERT INTO social_distribution_queue (
-        article_id,
-        platform,
-        region,
-        status,
-        title,
-        caption,
-        description,
-        hook,
-        closing,
-        call_to_action,
-        thumbnail_text,
-        pinned_comment,
-        hashtags,
-        safety_result,
-        publishing_result,
-        provider_name,
-        provider_post_id,
-        scheduled_at,
-        error_message
-      )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        $8,
-        $9,
-        $10,
-        $11,
-        $12,
-        $13::jsonb,
-        $14::jsonb,
-        $15::jsonb,
-        $16,
-        $17,
-        $18,
-        $19
-      )
-      RETURNING *
-      `,
-      [
-        articleId,
+  const result = await db.query(
+    `
+    INSERT INTO social_distribution_queue (
+      article_id,
+      platform,
+      region,
+      status,
+      title,
+      caption,
+      description,
+      hook,
+      closing,
+      call_to_action,
+      thumbnail_text,
+      pinned_comment,
+      hashtags,
+      safety_result,
+      publishing_result,
+      provider_name,
+      provider_post_id,
+      scheduled_at,
+      error_message
+    )
+    VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      $7,
+      $8,
+      $9,
+      $10,
+      $11,
+      $12,
+      $13::jsonb,
+      $14::jsonb,
+      $15::jsonb,
+      $16,
+      $17,
+      $18,
+      $19
+    )
+    RETURNING *
+    `,
+    [
+      normalizedArticleId,
 
-        normalizedPlatform,
+      normalizedPlatform,
 
-        normalizeText(
-          region,
-          200
-        ) || "Worldwide",
+      normalizedRegion,
 
-        normalizedStatus,
+      normalizedStatus,
 
-        normalizeText(
-          content.title,
-          1000
-        ),
+      normalizeText(
+        normalizedContent.title,
+        1000
+      ),
 
-        normalizeText(
-          content.caption,
-          10000
-        ),
+      normalizeText(
+        normalizedContent.caption,
+        10000
+      ),
 
-        normalizeText(
-          content.description,
-          10000
-        ),
+      normalizeText(
+        normalizedContent.description,
+        10000
+      ),
 
-        normalizeText(
-          content.hook,
-          1000
-        ),
+      normalizeText(
+        normalizedContent.hook,
+        1000
+      ),
 
-        normalizeText(
-          content.closing,
-          1000
-        ),
+      normalizeText(
+        normalizedContent.closing,
+        1000
+      ),
 
-        normalizeText(
-          content.callToAction,
-          500
-        ),
+      normalizeText(
+        normalizedContent.callToAction,
+        500
+      ),
 
-        normalizeText(
-          content.thumbnailText,
-          300
-        ),
+      normalizeText(
+        normalizedContent.thumbnailText,
+        300
+      ),
 
-        normalizeText(
-          content.pinnedComment,
-          1000
-        ),
+      normalizeText(
+        normalizedContent.pinnedComment,
+        1000
+      ),
 
-        JSON.stringify(
-          Array.isArray(
-            content.hashtags
-          )
-            ? content.hashtags
-            : []
-        ),
+      JSON.stringify(
+        normalizedHashtags
+      ),
 
-        JSON.stringify(
-          safety || {}
-        ),
+      JSON.stringify(
+        normalizedSafety
+      ),
 
-        JSON.stringify(
-          publishing || {}
-        ),
+      JSON.stringify(
+        normalizedPublishing
+      ),
 
+      normalizeText(
         providerName,
+        200
+      ) || null,
 
+      normalizeText(
         providerPostId,
+        500
+      ) || null,
 
-        scheduledAt,
+      scheduledAt || null,
 
+      normalizeText(
         errorMessage,
-      ]
-    );
+        2000
+      ) || null,
+    ]
+  );
 
   return result.rows[0];
 }
-
 
 export async function saveDistributionBatch(
   db,
   {
     articleId = null,
-    region = "Worldwide",
+    region = DEFAULT_REGION,
     packages = [],
   } = {}
 ) {
-  if (
-    !Array.isArray(
-      packages
-    )
-  ) {
-    throw new Error(
-      "Packages must be an array"
-    );
+  if (!Array.isArray(packages)) {
+    throw new Error("Packages must be an array");
   }
 
   const saved = [];
 
-  for (
-    const item of packages
-  ) {
+  for (const item of packages) {
     try {
+      if (!item || typeof item !== "object") {
+        throw new Error(
+          "Distribution item must be an object"
+        );
+      }
+
       const row =
         await saveSocialDistributionPackage(
           db,
@@ -352,7 +423,9 @@ export async function saveDistributionBatch(
             platform:
               item.platform,
 
-            region,
+            region:
+              item.region ||
+              region,
 
             status:
               item.status ||
@@ -364,11 +437,31 @@ export async function saveDistributionBatch(
 
             safety:
               item.safety ||
+              item.safetyResult ||
               {},
 
             publishing:
               item.publishing ||
+              item.publishingResult ||
               {},
+
+            providerName:
+              item.providerName ||
+              null,
+
+            providerPostId:
+              item.providerPostId ||
+              item.externalId ||
+              null,
+
+            scheduledAt:
+              item.scheduledAt ||
+              null,
+
+            errorMessage:
+              item.errorMessage ||
+              item.error ||
+              null,
           }
         );
 
@@ -376,17 +469,21 @@ export async function saveDistributionBatch(
         success: true,
         row,
       });
-
     } catch (error) {
       saved.push({
         success: false,
 
         platform:
-          item.platform ||
+          item?.platform ||
           null,
 
+        region:
+          item?.region ||
+          region,
+
         error:
-          error.message,
+          error?.message ||
+          "Unknown distribution error",
       });
     }
   }
@@ -414,28 +511,24 @@ export async function saveDistributionBatch(
   };
 }
 
-
 export async function getSocialDistributionQueue(
   db,
   {
     status,
     platform,
+    region,
     articleId,
     limit = 50,
   } = {}
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
   const values = [];
   const conditions = [];
 
   if (status) {
     values.push(
-      normalizeStatus(
-        status
-      )
+      normalizeStatus(status)
     );
 
     conditions.push(
@@ -445,9 +538,7 @@ export async function getSocialDistributionQueue(
 
   if (platform) {
     values.push(
-      normalizePlatform(
-        platform
-      )
+      normalizePlatform(platform)
     );
 
     conditions.push(
@@ -455,25 +546,25 @@ export async function getSocialDistributionQueue(
     );
   }
 
+  if (region) {
+    values.push(
+      normalizeRegion(region)
+    );
+
+    conditions.push(
+      `region = $${values.length}`
+    );
+  }
+
   if (
-    articleId !==
-      undefined &&
-    articleId !==
-      null &&
-    String(
-      articleId
-    ).trim()
+    articleId !== undefined &&
+    articleId !== null &&
+    String(articleId).trim()
   ) {
     const numericArticleId =
-      Number(
-        articleId
-      );
+      normalizeArticleId(articleId);
 
-    if (
-      Number.isInteger(
-        numericArticleId
-      )
-    ) {
+    if (numericArticleId !== null) {
       values.push(
         numericArticleId
       );
@@ -489,16 +580,13 @@ export async function getSocialDistributionQueue(
       200,
       Math.max(
         1,
-        Number(limit) ||
-          50
+        Number(limit) || 50
       )
     );
 
   const where =
     conditions.length
-      ? `WHERE ${conditions.join(
-          " AND "
-        )}`
+      ? `WHERE ${conditions.join(" AND ")}`
       : "";
 
   const result =
@@ -521,22 +609,18 @@ export async function getSocialDistributionQueue(
   return result.rows;
 }
 
-
 export async function getSocialDistributionItem(
   db,
   id
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
   const numericId =
     Number(id);
 
   if (
-    !Number.isInteger(
-      numericId
-    )
+    !Number.isInteger(numericId) ||
+    numericId <= 0
   ) {
     throw new Error(
       "Valid distribution ID is required"
@@ -562,7 +646,6 @@ export async function getSocialDistributionItem(
   );
 }
 
-
 export async function updateSocialDistributionStatus(
   db,
   id,
@@ -575,17 +658,14 @@ export async function updateSocialDistributionStatus(
     publishingResult,
   } = {}
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
   const numericId =
     Number(id);
 
   if (
-    !Number.isInteger(
-      numericId
-    )
+    !Number.isInteger(numericId) ||
+    numericId <= 0
   ) {
     throw new Error(
       "Valid distribution ID is required"
@@ -593,9 +673,7 @@ export async function updateSocialDistributionStatus(
   }
 
   const normalizedStatus =
-    normalizeStatus(
-      status
-    );
+    normalizeStatus(status);
 
   const result =
     await db.query(
@@ -631,10 +709,11 @@ export async function updateSocialDistributionStatus(
           END,
 
         error_message =
-          COALESCE(
-            $6,
-            error_message
-          ),
+          CASE
+            WHEN $6 IS NULL
+              THEN error_message
+            ELSE $6
+          END,
 
         publishing_result =
           CASE
@@ -655,21 +734,28 @@ export async function updateSocialDistributionStatus(
 
         normalizedStatus,
 
-        providerName ||
-          null,
+        normalizeText(
+          providerName,
+          200
+        ) || null,
 
-        providerPostId ||
-          null,
+        normalizeText(
+          providerPostId,
+          500
+        ) || null,
 
-        scheduledAt ||
-          null,
+        scheduledAt || null,
 
-        errorMessage ||
-          null,
+        normalizeText(
+          errorMessage,
+          2000
+        ) || null,
 
         JSON.stringify(
-          publishingResult ||
+          normalizeJSON(
+            publishingResult,
             {}
+          )
         ),
       ]
     );
@@ -679,7 +765,6 @@ export async function updateSocialDistributionStatus(
     null
   );
 }
-
 
 export async function cancelSocialDistribution(
   db,
@@ -700,7 +785,6 @@ export async function cancelSocialDistribution(
   );
 }
 
-
 export async function getScheduledSocialPosts(
   db,
   {
@@ -708,16 +792,12 @@ export async function getScheduledSocialPosts(
     limit = 50,
   } = {}
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
   const safeMinutes =
     Math.max(
       0,
-      Number(
-        beforeMinutes
-      ) || 5
+      Number(beforeMinutes) || 5
     );
 
   const safeLimit =
@@ -725,8 +805,7 @@ export async function getScheduledSocialPosts(
       200,
       Math.max(
         1,
-        Number(limit) ||
-          50
+        Number(limit) || 50
       )
     );
 
@@ -758,13 +837,10 @@ export async function getScheduledSocialPosts(
   return result.rows;
 }
 
-
 export async function getSocialDistributionStats(
   db
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
   const result =
     await db.query(
@@ -827,28 +903,42 @@ export async function getSocialDistributionStats(
       `
     );
 
+  const regionResult =
+    await db.query(
+      `
+      SELECT
+        region,
+        COUNT(*)::INTEGER AS total
+
+      FROM social_distribution_queue
+
+      GROUP BY region
+
+      ORDER BY total DESC
+      `
+    );
+
   return {
     ...(result.rows[0] || {}),
 
     platforms:
       platformResult.rows,
+
+    regions:
+      regionResult.rows,
   };
 }
-
 
 export async function cleanupOldSocialDistribution(
   db,
   days = 90
 ) {
-  await ensureSocialDistributionTable(
-    db
-  );
+  await ensureSocialDistributionTable(db);
 
   const safeDays =
     Math.max(
       1,
-      Number(days) ||
-        90
+      Number(days) || 90
     );
 
   const result =
@@ -880,9 +970,37 @@ export async function cleanupOldSocialDistribution(
   };
 }
 
-
 export function getSocialDistributionStatuses() {
   return [
     ...VALID_STATUSES,
   ];
+}
+
+export function getSocialDistributionStoreStatus() {
+  return {
+    configured: true,
+
+    databaseRequired: true,
+
+    supportsRegions: true,
+
+    supportsSafetyResult: true,
+
+    supportsPublishingResult: true,
+
+    supportsCEOApproval:
+      true,
+
+    supportsScheduledPosts:
+      true,
+
+    supportsProviderMetadata:
+      true,
+
+    supportsCleanup:
+      true,
+
+    externalPublishing:
+      false,
+  };
 }
