@@ -106,20 +106,35 @@ async function saveAIResult(
   await db.query(`
     UPDATE articles
     SET
-      ai_summary = $1,
-      ai_category = $2,
-      ai_sentiment = $3,
-      is_analyzed = $4,
+      ai_headline = $1,
+      ai_summary = $2,
+      ai_category = $3,
+      seo_title = $4,
+      ai_sentiment = $5,
+      key_points = $6,
+      is_analyzed = $7,
       updated_at = CURRENT_TIMESTAMP
-    WHERE id = $5
+    WHERE id = $8
   `, [
+    analysis.headline || "",
+
     analysis.summary || "",
 
     analysis.category ||
       "world",
 
+    analysis.seoTitle || "",
+
     analysis.sentiment ||
       "neutral",
+
+    JSON.stringify(
+      Array.isArray(
+        analysis.keyPoints
+      )
+        ? analysis.keyPoints
+        : []
+    ),
 
     isAIAnalyzed,
 
