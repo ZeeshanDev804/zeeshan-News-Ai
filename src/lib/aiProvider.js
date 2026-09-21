@@ -28,14 +28,12 @@ Rules:
 - If information is insufficient, say that it is insufficient.
 `.trim();
 
-
 export function isAIConfigured() {
   return Boolean(
     String(AI_API_KEY).trim() &&
     String(AI_MODEL).trim()
   );
 }
-
 
 export async function generateAIText(prompt) {
   if (!String(AI_API_KEY).trim()) {
@@ -63,7 +61,6 @@ export async function generateAIText(prompt) {
     `${GEMINI_API_BASE}/models/${encodeURIComponent(
       modelName
     )}:generateContent`;
-
 
   const response =
     await fetch(endpoint, {
@@ -102,10 +99,12 @@ export async function generateAIText(prompt) {
 
         generationConfig: {
           temperature: 0.2,
+
+          responseMimeType:
+            "application/json",
         },
       }),
     });
-
 
   if (!response.ok) {
     const errorText =
@@ -116,10 +115,8 @@ export async function generateAIText(prompt) {
     );
   }
 
-
   const data =
     await response.json();
-
 
   const content =
     data
@@ -132,17 +129,14 @@ export async function generateAIText(prompt) {
       .join("")
       .trim();
 
-
   if (!content) {
     throw new Error(
       "Gemini AI returned an empty response"
     );
   }
 
-
   return content;
 }
-
 
 export function getAIProviderStatus() {
   return {
