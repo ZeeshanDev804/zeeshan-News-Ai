@@ -1,25 +1,46 @@
-// ========================================
-// ZEESHAN NEWS AI
-// ADMIN / CEO DASHBOARD
-// ========================================
+"use strict";
+
+/*
+========================================
+ZEESHAN NEWS AI
+ADMIN / CEO CONTROL CENTER
+========================================
+
+This file provides:
+- Admin authentication
+- System status
+- AutoPilot status/control
+- Emergency stop/release
+- CEO approval statistics
+- Distribution status
+- Safe API handling
+- Automatic dashboard refresh
+*/
+
+
+/* ========================================
+   GLOBAL STATE
+======================================== */
 
 let adminToken = "";
 
 let dashboardLoading = false;
 
+let refreshTimer = null;
 
-// ========================================
-// ELEMENT HELPER
-// ========================================
+
+/* ========================================
+   ELEMENT HELPER
+======================================== */
 
 function $(id) {
   return document.getElementById(id);
 }
 
 
-// ========================================
-// HTML SAFETY
-// ========================================
+/* ========================================
+   HTML SAFETY
+======================================== */
 
 function escapeHTML(value = "") {
   return String(value)
@@ -31,17 +52,16 @@ function escapeHTML(value = "") {
 }
 
 
-// ========================================
-// DATE FORMAT
-// ========================================
+/* ========================================
+   DATE FORMAT
+======================================== */
 
 function formatDate(value) {
   if (!value) {
     return "Unknown time";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
   if (
     Number.isNaN(
@@ -55,19 +75,33 @@ function formatDate(value) {
 }
 
 
-// ========================================
-// API REQUEST
-// ========================================
+/* ========================================
+   API REQUEST
+======================================== */
 
 async function adminFetch(
   endpoint,
   options = {}
 ) {
   const headers = {
+    Accept:
+      "application/json",
+
     ...(options.headers || {}),
-    Authorization:
-      `Bearer ${adminToken}`,
   };
+
+  if (adminToken) {
+    headers.Authorization =
+      `Bearer ${adminToken}`;
+  }
+
+  if (
+    options.body &&
+    !headers["Content-Type"]
+  ) {
+    headers["Content-Type"] =
+      "application/json";
+  }
 
   const response =
     await fetch(
@@ -75,6 +109,7 @@ async function adminFetch(
       {
         ...options,
         headers,
+        cache: "no-store",
       }
     );
 
@@ -88,19 +123,26 @@ async function adminFetch(
   }
 
   if (!response.ok) {
-    throw new Error(
-      data?.error ||
-      `Request failed: ${response.status}`
-    );
+    const error =
+      new Error(
+        data?.error ||
+        data?.message ||
+        `Request failed: ${response.status}`
+      );
+
+    error.status =
+      response.status;
+
+    throw error;
   }
 
   return data;
 }
 
 
-// ========================================
-// CONNECTION STATUS
-// ========================================
+/* ========================================
+   CONNECTION STATUS
+======================================== */
 
 function setConnectionStatus(
   online,
@@ -113,43 +155,61 @@ function setConnectionStatus(
     return;
   }
 
-  if (online) {
-    element.className =
-      "status online";
+  element.className =
+    online
+      ? "status online"
+      : "status offline";
 
-    element.textContent =
-      "● CONNECTED";
-  } else {
-    element.className =
-      "status offline";
-
-    element.textContent =
-      text ||
-      "● DISCONNECTED";
-  }
+  element.textContent =
+    online
+      ? "● CONNECTED"
+      : (
+          text ||
+          "● DISCONNECTED"
+        );
 }
 
 
-// ========================================
-// AUTH ERROR
-// ========================================
+/* ========================================
+   AUTH ERROR
+======================================== */
 
 function showAuthError(
-  message
+  message = ""
 ) {
   const element =
     $("authError");
 
   if (element) {
     element.textContent =
-      message || "";
+      String(message);
   }
 }
 
 
-// ========================================
-// LOGIN
-// ========================================
+/* ========================================
+   SAFE TEXT SETTER
+======================================== */
+
+function setText(
+  id,
+  value
+) {
+  const element =
+    $(id);
+
+  if (!element) {
+    return;
+  }
+
+  element.textContent =
+    String(value ?? "—");
+}
+
+
+/* ========================================
+   LOGIN
+======================================== */
 
 async function login() {
   const input =
@@ -183,7 +243,7 @@ async function login() {
   }
 
   try {
-    await loadDashboard();
+    await verifyAdminAccess();
 
     $("authSection")
       ?.classList.add(
@@ -195,11 +255,15 @@ async function login() {
         "hidden"
       );
 
-    input.value = "";
+    if (input) {
+      input.value = "";
+    }
 
     setConnectionStatus(
       true
     );
+
+    await loadDashboard();
 
   } catch (error) {
     adminToken = "";
@@ -225,9 +289,45 @@ async function login() {
 }
 
 
-// ========================================
-// LOAD FULL DASHBOARD
-// ========================================
+/* ========================================
+   VERIFY ADMIN ACCESS
+======================================== */
+
+async function verifyAdminAccess() {
+  /*
+    Try the protected admin system endpoint
+    first when available.
+  */
+
+  try {
+    return await adminFetch(
+      "/api/admin/system-status"
+    );
+  } catch (error) {
+
+    /*
+      A 404 means the endpoint is not mounted
+      in the current server configuration.
+
+      Fall back to the protected dashboard.
+    */
+
+    if (
+      error.status === 404
+    ) {
+      return await adminFetch(
+        "/api/admin/dashboard"
+      );
+    }
+
+    throw error;
+  }
+}
+
+
+/* ========================================
+   LOAD DASHBOARD
+======================================== */
 
 async function loadDashboard() {
   if (
@@ -239,18 +339,45 @@ async function loadDashboard() {
   dashboardLoading = true;
 
   try {
-    const data =
-      await adminFetch(
-        "/api/admin/dashboard"
-      );
+    /*
+      The current project may expose either
+      /api/admin/dashboard or only individual
+      status endpoints.
+    */
 
-    renderDashboard(
-      data
-    );
+    let dashboardData =
+      null;
+
+    try {
+      dashboardData =
+        await adminFetch(
+          "/api/admin/dashboard"
+        );
+    } catch (error) {
+      if (
+        error.status !== 404
+      ) {
+        throw error;
+      }
+    }
+
+    if (dashboardData) {
+      renderDashboard(
+        dashboardData
+      );
+    }
+
+    await Promise.allSettled([
+      loadSystemStatus(),
+      loadAutoPilotControl(),
+      loadApprovalStats(),
+      loadDistributionStatus(),
+    ]);
 
     setConnectionStatus(
       true
     );
+
   } finally {
     dashboardLoading =
       false;
@@ -258,9 +385,9 @@ async function loadDashboard() {
 }
 
 
-// ========================================
-// RENDER DASHBOARD
-// ========================================
+/* ========================================
+   RENDER DASHBOARD
+======================================== */
 
 function renderDashboard(
   data
@@ -277,32 +404,33 @@ function renderDashboard(
   const system =
     data?.system || {};
 
-  $("totalNews")
-    .textContent =
+  setText(
+    "totalNews",
     Number(
       overview.totalNews || 0
-    );
+    )
+  );
 
-  $("legalReviewCount")
-    .textContent =
+  setText(
+    "legalReviewCount",
     Number(
-      legal.reviewQueueCount ||
-        0
-    );
+      legal.reviewQueueCount || 0
+    )
+  );
 
-  $("complaintCount")
-    .textContent =
+  setText(
+    "complaintCount",
     Number(
-      legal.complaintCount ||
-        0
-    );
+      legal.complaintCount || 0
+    )
+  );
 
-  $("auditCount")
-    .textContent =
+  setText(
+    "auditCount",
     Number(
-      legal.auditCount ||
-        0
-    );
+      legal.auditCount || 0
+    )
+  );
 
   renderLatestNews(
     overview.latestNews
@@ -339,12 +467,85 @@ function renderDashboard(
 }
 
 
-// ========================================
-// SYSTEM STATUS
-// ========================================
+/* ========================================
+   SYSTEM STATUS
+======================================== */
+
+async function loadSystemStatus() {
+  try {
+    const data =
+      await adminFetch(
+        "/api/system/status"
+      );
+
+    const system =
+      data?.system || {};
+
+    const features =
+      data?.features || {};
+
+    const database =
+      system.database ||
+      "connected";
+
+    const autoPilot =
+      Boolean(
+        features.autoPilot
+      );
+
+    setText(
+      "serverStatus",
+      data?.status ||
+      "operational"
+    );
+
+    setText(
+      "databaseStatus",
+      String(
+        database
+      ).toUpperCase()
+    );
+
+    setText(
+      "autoPilotStatus",
+      autoPilot
+        ? "ENABLED"
+        : "DISABLED"
+    );
+
+    renderSystem(
+      system
+    );
+
+    return data;
+
+  } catch (error) {
+    console.error(
+      "System status error:",
+      error.message
+    );
+
+    setText(
+      "serverStatus",
+      "ERROR"
+    );
+
+    setText(
+      "databaseStatus",
+      "UNKNOWN"
+    );
+
+    return null;
+  }
+}
+
+
+/* ========================================
+   RENDER SYSTEM
+======================================== */
 
 function renderSystem(
-  system
+  system = {}
 ) {
   const databaseStatus =
     system.database ||
@@ -372,49 +573,62 @@ function renderSystem(
         ?.enabled
     );
 
-  $("databaseStatus")
-    .textContent =
+  setText(
+    "databaseStatus",
     String(
       databaseStatus
-    ).toUpperCase();
+    ).toUpperCase()
+  );
 
-  $("aiStatus")
-    .textContent =
+  setText(
+    "aiStatus",
     aiConfigured
       ? "READY"
-      : "NOT CONFIGURED";
+      : "NOT CONFIGURED"
+  );
 
-  $("cronStatus")
-    .textContent =
+  setText(
+    "cronStatus",
     cronConfigured
       ? "PROTECTED"
-      : "NOT CONFIGURED";
+      : "NOT CONFIGURED"
+  );
 
-  $("schedulerStatus")
-    .textContent =
+  setText(
+    "schedulerStatus",
     schedulerRunning
       ? "RUNNING"
-      : "STOPPED";
+      : "STOPPED"
+  );
 
-  $("killSwitchStatus")
-    .textContent =
+  setText(
+    "killSwitchStatus",
     killSwitchEnabled
       ? "ACTIVE"
-      : "OFF";
+      : "OFF"
+  );
 
-  $("adminAuthStatus")
-    .textContent =
-    "PROTECTED";
+  setText(
+    "adminAuthStatus",
+    "PROTECTED"
+  );
+
+  setText(
+    "emergencyStatus",
+    killSwitchEnabled
+      ? "ACTIVE"
+      : "OFF"
+  );
 }
 
 
-// ========================================
-// SYSTEM BANNER
-// ========================================
+/* ========================================
+   SYSTEM BANNER
+======================================== */
 
 function updateSystemBanner(
-  dashboard,
-  system
+  dashboard = {},
+  system = {}
 ) {
   const element =
     $("systemBannerText");
@@ -433,6 +647,7 @@ function updateSystemBanner(
   if (killSwitch) {
     element.textContent =
       "EMERGENCY PUBLICATION BLOCK IS ACTIVE";
+
     return;
   }
 
@@ -442,24 +657,8 @@ function updateSystemBanner(
 }
 
 
-// ========================================
-// LATEST NEWS
-// ========================================
+/* ========================================
+   LATEST NEWS
+======================================== */
 
-function renderLatestNews(
-  news = []
-) {
-  const container =
-    $("latestNews");
-
-  if (!container) {
-    return;
-  }
-
-  if (
-    !Array.isArray(news) ||
-    news.length === 0
-  ) {
-    container.innerHTML =
-      `<div class="empty-state">
-        No latest news
+function renderLatestNews
