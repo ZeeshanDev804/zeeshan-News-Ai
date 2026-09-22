@@ -12,8 +12,6 @@
   - Categories
   - Category News
   - Article Links
-  - Web Push Notifications
-  - Push Preferences
   - Analytics Tracking
 */
 
@@ -65,8 +63,7 @@ function formatDate(value) {
     return "Unknown date";
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
   if (
     Number.isNaN(
@@ -155,6 +152,59 @@ async function apiRequest(
 
 
 /* =========================================
+   ANALYTICS
+========================================= */
+
+async function trackAnalytics(
+  eventType,
+  {
+    articleId = null,
+    pagePath =
+      window.location.pathname,
+    source = null,
+    metadata = {},
+  } = {}
+) {
+  try {
+    await fetch(
+      `${API_BASE}/analytics/event`,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          Accept:
+            "application/json",
+        },
+
+        keepalive: true,
+
+        body: JSON.stringify({
+          eventType,
+          articleId,
+          pagePath,
+          source,
+          metadata,
+        }),
+      }
+    );
+  } catch (error) {
+    /*
+      Analytics must never break
+      the news website.
+    */
+
+    console.debug(
+      "Analytics tracking skipped:",
+      error.message
+    );
+  }
+}
+
+
+/* =========================================
    NEWS CARD
 ========================================= */
 
@@ -206,25 +256,24 @@ function createNewsCard(
 
       </div>
 
-
       <h3 class="news-card-title">
 
         <a
           href="${escapeHTML(articleURL)}"
-          data-article-id="${escapeHTML(id || "")}"
+          data-article-id="${escapeHTML(
+            id || ""
+          )}"
         >
           ${escapeHTML(title)}
         </a>
 
       </h3>
 
-
       <p class="news-card-summary">
         ${escapeHTML(
           truncateText(summary)
         )}
       </p>
-
 
       <div class="news-card-footer">
 
@@ -233,7 +282,6 @@ function createNewsCard(
             formatDate(publishedAt)
           )}
         </time>
-
 
         ${
           article?.link
@@ -311,7 +359,6 @@ async function loadLatestNews() {
   }
 
   try {
-
     const data =
       await apiRequest(
         "/news?limit=30"
@@ -329,8 +376,20 @@ async function loadLatestNews() {
       "No latest news available yet."
     );
 
-  } catch (error) {
+    trackAnalytics(
+      "page_view",
+      {
+        metadata: {
+          section:
+            "latest_news",
 
+          count:
+            articles.length,
+        },
+      }
+    );
+
+  } catch (error) {
     console.error(
       "❌ Latest news error:",
       error.message
@@ -359,7 +418,6 @@ async function loadTrendingNews() {
   }
 
   try {
-
     const data =
       await apiRequest(
         "/news/trending?limit=6"
@@ -380,9 +438,6 @@ async function loadTrendingNews() {
     trackAnalytics(
       "trending_view",
       {
-        pagePath:
-          window.location.pathname,
-
         metadata: {
           count:
             articles.length,
@@ -391,7 +446,6 @@ async function loadTrendingNews() {
     );
 
   } catch (error) {
-
     console.error(
       "❌ Trending news error:",
       error.message
@@ -424,7 +478,6 @@ async function loadNewsCount() {
   }
 
   try {
-
     const data =
       await apiRequest(
         "/news/count"
@@ -443,7 +496,6 @@ async function loadNewsCount() {
     );
 
   } catch (error) {
-
     console.error(
       "❌ News count error:",
       error.message
@@ -472,7 +524,6 @@ async function loadCategories() {
   }
 
   try {
-
     const data =
       await apiRequest(
         "/news/categories"
@@ -489,12 +540,6 @@ async function loadCategories() {
     ) {
       return;
     }
-
-    /*
-      If the homepage already has
-      category buttons, keep them.
-      Otherwise create them.
-    */
 
     const existingButtons =
       container.querySelectorAll(
@@ -514,7 +559,11 @@ async function loadCategories() {
           const category =
             typeof item === "string"
               ? item
-              : item.category;
+              : item?.category;
+
+          if (!category) {
+            return "";
+          }
 
           return `
             <button
@@ -533,7 +582,6 @@ async function loadCategories() {
         .join("");
 
   } catch (error) {
-
     console.error(
       "❌ Categories error:",
       error.message
@@ -568,7 +616,6 @@ async function loadCategoryNews(
   }
 
   try {
-
     const data =
       await apiRequest(
         `/news/category/${encodeURIComponent(
@@ -591,9 +638,6 @@ async function loadCategoryNews(
     trackAnalytics(
       "category_view",
       {
-        pagePath:
-          window.location.pathname,
-
         metadata: {
           category:
             normalized,
@@ -605,11 +649,16 @@ async function loadCategoryNews(
     );
 
   } catch (error) {
-
     console.error(
       "❌ Category news error:",
       error.message
     );
+
+    container.innerHTML = `
+      <div class="empty-state">
+        Unable to load category news.
+      </div>
+    `;
   }
 }
 
@@ -644,7 +693,6 @@ async function performSearch(
   `;
 
   try {
-
     const data =
       await apiRequest(
         `/news/search?q=${encodeURIComponent(
@@ -668,9 +716,6 @@ async function performSearch(
     trackAnalytics(
       "search",
       {
-        pagePath:
-          window.location.pathname,
-
         metadata: {
           query:
             searchQuery.slice(
@@ -685,7 +730,6 @@ async function performSearch(
     );
 
   } catch (error) {
-
     console.error(
       "❌ Search error:",
       error.message
@@ -799,17 +843,132 @@ function setupArticleAnalytics() {
         return;
       }
 
+      const isExternalSource =
+        link.dataset.sourceClick ===
+        "true";
+
       trackAnalytics(
-        "article_view",
+        isExternalSource
+          ? "external_source_click"
+          : "article_view",
         {
           articleId,
-
-          pagePath:
-            window.location.pathname,
 
           metadata: {
             target:
               link.getAttribute(
                 "href"
               ),
+
+            external:
+              isExternalSource,
           },
+        }
+      );
+    }
+  );
+}
+
+
+/* =========================================
+   SYSTEM STATUS
+========================================= */
+
+async function loadSystemStatus() {
+  const element =
+    getElement("system-status");
+
+  if (!element) {
+    return;
+  }
+
+  try {
+    const data =
+      await apiRequest(
+        "/system/status"
+      );
+
+    if (
+      data?.success
+    ) {
+      element.textContent =
+        "System operational • " +
+        new Date(
+          data.timestamp
+        ).toLocaleString();
+
+      return;
+    }
+
+    element.textContent =
+      "System status unavailable.";
+  } catch (error) {
+    console.error(
+      "❌ System status error:",
+      error.message
+    );
+
+    element.textContent =
+      "System status unavailable.";
+  }
+}
+
+
+/* =========================================
+   INITIALIZATION
+========================================= */
+
+async function initializeApp() {
+  setupSearch();
+  setupCategoryButtons();
+  setupArticleAnalytics();
+
+  await Promise.allSettled([
+    loadLatestNews(),
+    loadTrendingNews(),
+    loadNewsCount(),
+    loadCategories(),
+    loadSystemStatus(),
+  ]);
+
+  /*
+    Do not automatically request
+    notification permission here.
+
+    Browser notifications should only
+    be enabled after explicit user action.
+  */
+}
+
+
+/* =========================================
+   START
+========================================= */
+
+if (
+  document.readyState ===
+  "loading"
+) {
+  document.addEventListener(
+    "DOMContentLoaded",
+    initializeApp
+  );
+} else {
+  initializeApp();
+}
+
+
+/* =========================================
+   GLOBAL API
+========================================= */
+
+window.ZeeshanNewsAI = {
+  loadLatestNews,
+  loadTrendingNews,
+  loadNewsCount,
+  loadCategories,
+  loadCategoryNews,
+  performSearch,
+  trackAnalytics,
+  loadSystemStatus,
+};
