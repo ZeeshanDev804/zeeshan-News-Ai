@@ -1,70 +1,255 @@
-function normalizeValue(value, fallback = "") {
-  return String(value ?? fallback).trim();
-}
+"use strict";
 
-function normalizePositiveInteger(
-  value,
-  fallback
-) {
-  const number = Number(value);
+/*
+========================================
+ZEESHAN NEWS AI
+RETRY ENGINE
+========================================
 
-  if (
-    !Number.isInteger(number) ||
-    number < 1
-  ) {
-    return fallback;
-  }
+Purpose:
+- Retry failed operations safely
+- Exponential backoff
+- Maximum retry limit
+- Optional custom retry conditions
+- No infinite retry loops
+========================================
+*/
 
-  return number;
-}
 
-function wait(ms) {
+/* ========================================
+   DEFAULT CONFIG
+======================================== */
+
+const DEFAULT_MAX_RETRIES = 3;
+
+const DEFAULT_BASE_DELAY = 1000;
+
+const DEFAULT_MAX_DELAY = 30000;
+
+
+/* ========================================
+   SLEEP
+======================================== */
+
+function sleep(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
 }
 
-export async function withRetry(
+
+/* ========================================
+   CALCULATE DELAY
+======================================== */
+
+function calculateRetryDelay(
+  attempt,
+  baseDelay = DEFAULT_BASE_DELAY,
+  maxDelay = DEFAULT_MAX_DELAY
+) {
+  const safeAttempt =
+    Math.max(
+      0,
+      Number(attempt) || 0
+    );
+
+  const safeBaseDelay =
+    Math.max(
+      0,
+      Number(baseDelay) ||
+        DEFAULT_BASE_DELAY
+    );
+
+  const safeMaxDelay =
+    Math.max(
+      safeBaseDelay,
+      Number(maxDelay) ||
+        DEFAULT_MAX_DELAY
+    );
+
+  /*
+    Exponential backoff:
+
+    attempt 0 → base
+    attempt 1 → base × 2
+    attempt 2 → base × 4
+    attempt 3 → base × 8
+  */
+
+  const delay =
+    safeBaseDelay *
+    Math.pow(
+      2,
+      safeAttempt
+    );
+
+  return Math.min(
+    delay,
+    safeMaxDelay
+  );
+}
+
+
+/* ========================================
+   DEFAULT RETRY CONDITION
+======================================== */
+
+function shouldRetryError(
+  error
+) {
+  if (!error) {
+    return true;
+  }
+
+  /*
+    Explicitly non-retryable errors.
+  */
+
+  if (
+    error.retryable ===
+    false
+  ) {
+    return false;
+  }
+
+  const status =
+    Number(
+      error.status ||
+      error.statusCode ||
+      error.response?.status
+    );
+
+  /*
+    Client errors normally should not
+    be retried.
+  */
+
+  if (
+    status >= 400 &&
+    status < 500 &&
+    status !== 408 &&
+    status !== 429
+  ) {
+    return false;
+  }
+
+  /*
+    Rate limit / timeout / server errors
+    can normally be retried.
+  */
+
+  if (
+    status === 408 ||
+    status === 429 ||
+    status >= 500
+  ) {
+    return true;
+  }
+
+  /*
+    Network-style errors.
+  */
+
+  const code =
+    String(
+      error.code || ""
+    ).toUpperCase();
+
+  const retryableCodes = [
+    "ECONNRESET",
+    "ECONNREFUSED",
+    "ETIMEDOUT",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "UND_ERR_CONNECT_TIMEOUT",
+    "UND_ERR_SOCKET",
+  ];
+
+  if (
+    retryableCodes.includes(
+      code
+    )
+  ) {
+    return true;
+  }
+
+  /*
+    If there is no HTTP status or known
+    non-retryable condition, retry once
+    according to the configured limit.
+  */
+
+  return true;
+}
+
+
+/* ========================================
+   RETRY OPERATION
+======================================== */
+
+async function retryOperation(
   operation,
   options = {}
 ) {
   if (
-    typeof operation !== "function"
+    typeof operation !==
+    "function"
   ) {
-    throw new Error(
-      "Retry operation must be a function"
+    throw new TypeError(
+      "retryOperation requires a function."
     );
   }
 
-  const maxAttempts =
-    normalizePositiveInteger(
-      options.maxAttempts,
-      3
+  const maxRetries =
+    Math.max(
+      0,
+      Number(
+        options.maxRetries ??
+        DEFAULT_MAX_RETRIES
+      )
     );
 
-  const baseDelayMs =
-    normalizePositiveInteger(
-      options.baseDelayMs,
-      1000
+  const baseDelay =
+    Math.max(
+      0,
+      Number(
+        options.baseDelay ??
+        DEFAULT_BASE_DELAY
+      )
     );
 
-  const maxDelayMs =
-    normalizePositiveInteger(
-      options.maxDelayMs,
-      10000
+  const maxDelay =
+    Math.max(
+      baseDelay,
+      Number(
+        options.maxDelay ??
+        DEFAULT_MAX_DELAY
+      )
     );
 
-  const label =
-    normalizeValue(
-      options.label,
-      "Operation"
-    );
+  const retryCondition =
+    typeof options.shouldRetry ===
+    "function"
+      ? options.shouldRetry
+      : shouldRetryError;
+
+  const onRetry =
+    typeof options.onRetry ===
+    "function"
+      ? options.onRetry
+      : null;
 
   let lastError = null;
 
+
+  /*
+    Total attempts =
+    initial attempt + maxRetries
+  */
+
   for (
-    let attempt = 1;
-    attempt <= maxAttempts;
+    let attempt = 0;
+    attempt <= maxRetries;
     attempt++
   ) {
     try {
@@ -73,79 +258,362 @@ export async function withRetry(
           attempt
         );
 
-      return {
-        success: true,
-        result,
-        attempts: attempt,
-      };
+      return result;
 
     } catch (error) {
-      lastError = error;
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error(
+              String(error)
+            );
 
-      console.error(
-        `⚠️ ${label} failed on attempt ${attempt}/${maxAttempts}:`,
-        error?.message || error
-      );
+
+      /*
+        No more retries.
+      */
 
       if (
-        attempt >= maxAttempts
+        attempt >=
+        maxRetries
       ) {
         break;
       }
 
-      const exponentialDelay =
-        baseDelayMs *
-        Math.pow(
-          2,
-          attempt - 1
-        );
+
+      /*
+        Check whether this error
+        should actually be retried.
+      */
+
+      let canRetry =
+        false;
+
+      try {
+        canRetry =
+          await retryCondition(
+            lastError,
+            attempt
+          );
+      } catch {
+        canRetry =
+          false;
+      }
+
+      if (!canRetry) {
+        break;
+      }
+
 
       const delay =
-        Math.min(
-          exponentialDelay,
-          maxDelayMs
+        calculateRetryDelay(
+          attempt,
+          baseDelay,
+          maxDelay
         );
 
-      console.log(
-        `🔁 ${label} retrying in ${delay}ms...`
-      );
 
-      await wait(delay);
+      /*
+        Notify caller before retry.
+      */
+
+      if (onRetry) {
+        try {
+          await onRetry({
+            error:
+              lastError,
+
+            attempt,
+
+            nextAttempt:
+              attempt + 1,
+
+            delay,
+
+            maxRetries,
+          });
+        } catch (callbackError) {
+          console.warn(
+            "Retry onRetry callback failed:",
+            callbackError?.message ||
+              callbackError
+          );
+        }
+      }
+
+
+      await sleep(
+        delay
+      );
     }
   }
 
-  return {
-    success: false,
-    result: null,
-    attempts: maxAttempts,
-    error:
-      lastError?.message ||
-      "Operation failed after retries",
-  };
+
+  /*
+    Preserve original error
+    information.
+  */
+
+  throw lastError ||
+    new Error(
+      "Operation failed after retries."
+    );
 }
 
-export async function retryOrThrow(
+
+/* ========================================
+   RETRY WITH JITTER
+======================================== */
+
+function calculateJitterDelay(
+  attempt,
+  options = {}
+) {
+  const baseDelay =
+    Number(
+      options.baseDelay ??
+      DEFAULT_BASE_DELAY
+    );
+
+  const maxDelay =
+    Number(
+      options.maxDelay ??
+      DEFAULT_MAX_DELAY
+    );
+
+  const calculated =
+    calculateRetryDelay(
+      attempt,
+      baseDelay,
+      maxDelay
+    );
+
+  /*
+    Add 0–25% random jitter.
+    This helps prevent many workers
+    retrying at exactly the same time.
+  */
+
+  const jitter =
+    Math.random() *
+    calculated *
+    0.25;
+
+  return Math.min(
+    maxDelay,
+    Math.round(
+      calculated + jitter
+    )
+  );
+}
+
+
+/* ========================================
+   RETRY WITH JITTER
+======================================== */
+
+async function retryOperationWithJitter(
   operation,
   options = {}
 ) {
-  const result =
-    await withRetry(
-      operation,
-      options
-    );
-
-  if (!result.success) {
-    throw new Error(
-      result.error ||
-        "Operation failed after retries"
+  if (
+    typeof operation !==
+    "function"
+  ) {
+    throw new TypeError(
+      "retryOperationWithJitter requires a function."
     );
   }
 
-  return result.result;
+  const maxRetries =
+    Math.max(
+      0,
+      Number(
+        options.maxRetries ??
+        DEFAULT_MAX_RETRIES
+      )
+    );
+
+  const baseDelay =
+    Math.max(
+      0,
+      Number(
+        options.baseDelay ??
+        DEFAULT_BASE_DELAY
+      )
+    );
+
+  const maxDelay =
+    Math.max(
+      baseDelay,
+      Number(
+        options.maxDelay ??
+        DEFAULT_MAX_DELAY
+      )
+    );
+
+  const retryCondition =
+    typeof options.shouldRetry ===
+    "function"
+      ? options.shouldRetry
+      : shouldRetryError;
+
+  const onRetry =
+    typeof options.onRetry ===
+    "function"
+      ? options.onRetry
+      : null;
+
+  let lastError = null;
+
+
+  for (
+    let attempt = 0;
+    attempt <= maxRetries;
+    attempt++
+  ) {
+    try {
+      return await operation(
+        attempt
+      );
+
+    } catch (error) {
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error(
+              String(error)
+            );
+
+      if (
+        attempt >=
+        maxRetries
+      ) {
+        break;
+      }
+
+      let canRetry =
+        false;
+
+      try {
+        canRetry =
+          await retryCondition(
+            lastError,
+            attempt
+          );
+      } catch {
+        canRetry =
+          false;
+      }
+
+      if (!canRetry) {
+        break;
+      }
+
+      const delay =
+        calculateJitterDelay(
+          attempt,
+          {
+            baseDelay,
+            maxDelay,
+          }
+        );
+
+      if (onRetry) {
+        try {
+          await onRetry({
+            error:
+              lastError,
+
+            attempt,
+
+            nextAttempt:
+              attempt + 1,
+
+            delay,
+
+            maxRetries,
+          });
+        } catch (callbackError) {
+          console.warn(
+            "Retry callback failed:",
+            callbackError?.message ||
+              callbackError
+          );
+        }
+      }
+
+      await sleep(
+        delay
+      );
+    }
+  }
+
+  throw lastError ||
+    new Error(
+      "Operation failed after retries."
+    );
 }
 
-export function getRetryConfig() {
-  return {
-    maxAttempts: 3,
-    baseDelayMs: 1000,
-    maxDe
+
+/* ========================================
+   SIMPLE RETRY WRAPPER
+======================================== */
+
+async function withRetry(
+  operation,
+  maxRetries = DEFAULT_MAX_RETRIES,
+  baseDelay = DEFAULT_BASE_DELAY
+) {
+  return retryOperation(
+    operation,
+    {
+      maxRetries,
+      baseDelay,
+    }
+  );
+}
+
+
+/* ========================================
+   RETRY ENGINE OBJECT
+======================================== */
+
+const retryEngine = {
+  retryOperation,
+
+  retryOperationWithJitter,
+
+  withRetry,
+
+  calculateRetryDelay,
+
+  calculateJitterDelay,
+
+  shouldRetryError,
+
+  sleep,
+};
+
+
+/* ========================================
+   EXPORTS
+======================================== */
+
+export {
+  retryOperation,
+
+  retryOperationWithJitter,
+
+  withRetry,
+
+  calculateRetryDelay,
+
+  calculateJitterDelay,
+
+  shouldRetryError,
+
+  sleep,
+};
+
+export default retryEngine;
